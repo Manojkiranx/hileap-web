@@ -1,15 +1,23 @@
 import axios from 'axios';
 
+let rawBase = import.meta.env.VITE_API_URL || '/api';
+if (!rawBase.endsWith('/')) {
+  rawBase += '/';
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: rawBase,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Interceptor to attach Authorization header if stored token exists
+// Interceptor to clean relative endpoint slashes & attach Authorization header
 api.interceptors.request.use((config) => {
+  if (config.url && config.url.startsWith('/')) {
+    config.url = config.url.substring(1);
+  }
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
