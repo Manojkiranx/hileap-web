@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: hileap-backend
+    env: node
+    region: singapore
+    plan: starter
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COMPANY_UPI_ID
+        value: hileapnetwork@upi
+      - key: COMPANY_UPI_QR_URL
+        value: https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=hileapnetwork@upi&pn=HiLeap%20Network
