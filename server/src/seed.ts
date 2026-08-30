@@ -53,9 +53,9 @@ export const seedDatabase = async () => {
     // 3. Seed Users / Employees
     const adminUser = await User.create({
       employeeId: 'EMP-100',
-      name: 'Rajesh Sharma (Admin)',
+      name: 'Sabiesh (Admin)',
       phone: '+919876543210',
-      email: 'admin@hileap.com',
+      email: 'sabiesh@gmail.com',
       password: adminPass,
       role: 'Admin',
       assignedWorks: ['admin_management'],

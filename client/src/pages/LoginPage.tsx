@@ -8,7 +8,7 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'STAFF' | 'CUSTOMER'>('STAFF');
-  const [identifier, setIdentifier] = useState<string>('admin@hileap.com');
+  const [identifier, setIdentifier] = useState<string>('sabiesh@gmail.com');
   const [password, setPassword] = useState<string>('HileapAdmin@2026');
   const [customerInput, setCustomerInput] = useState<string>('CUST-1001');
   const [errorMsg, setErrorMsg] = useState<string>('');
