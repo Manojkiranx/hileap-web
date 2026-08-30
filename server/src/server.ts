@@ -110,11 +110,57 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
+import User from './models/User';
+import bcrypt from 'bcryptjs';
+
+const ensureAdminUser = async () => {
+  try {
+    const adminEmail = 'sabiesh@gmail.com';
+    const adminPass = await bcrypt.hash('HileapAdmin@2026', 10);
+    let admin = await User.findOne({ email: adminEmail });
+
+    if (!admin) {
+      const oldAdmin = await User.findOne({ email: 'admin@hileap.com' });
+      if (oldAdmin) {
+        oldAdmin.email = adminEmail;
+        oldAdmin.name = 'Sabiesh (Admin)';
+        oldAdmin.password = adminPass;
+        await oldAdmin.save();
+        console.log(`[Auto-Admin] Updated existing admin email to ${adminEmail}`);
+      } else {
+        await User.create({
+          employeeId: 'EMP-100',
+          name: 'Sabiesh (Admin)',
+          phone: '+919876543210',
+          email: adminEmail,
+          password: adminPass,
+          role: 'Admin',
+          assignedWorks: ['admin_management'],
+          employmentStatus: 'ACTIVE',
+          workStatus: 'OFFLINE',
+          salaryDetails: { baseSalary: 60000, allowances: 10000, deductions: 2000 },
+          workingHours: { startTime: '09:00', endTime: '18:00', timezone: 'Asia/Kolkata' },
+        });
+        console.log(`[Auto-Admin] Created admin user: ${adminEmail}`);
+      }
+    } else {
+      admin.password = adminPass;
+      await admin.save();
+      console.log(`[Auto-Admin] Admin user ${adminEmail} verified in MongoDB.`);
+    }
+  } catch (err: any) {
+    console.error('[Auto-Admin Error]:', err.message);
+  }
+};
+
 // Connect Database & Start Server
 export const startServer = async () => {
   try {
     await mongoose.connect(MONGODB_URI);
     console.log(`[MongoDB] Connected successfully to ${MONGODB_URI}`);
+
+    // Automatically ensure Admin user exists on every server startup
+    await ensureAdminUser();
 
     const server = app.listen(PORT, () => {
       console.log(`[HiLeap Server] Running on http://localhost:${PORT}`);
