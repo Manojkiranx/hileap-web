@@ -130,6 +130,59 @@ router.get('/:id', authenticateToken, requireAnyRole('Admin', 'Collection-Agent'
   }
 });
 
+// Helper function to generate guaranteed unique customerId
+async function generateNextCustomerId(requestedId?: string): Promise<string> {
+  if (requestedId && requestedId.trim()) {
+    const cleanReq = requestedId.trim();
+    const exists = await Customer.exists({ customerId: cleanReq });
+    if (!exists) {
+      return cleanReq;
+    }
+  }
+
+  const customers = await Customer.find({}, { customerId: 1 }).lean();
+  let maxNum = 1000;
+
+  for (const c of customers) {
+    if (c.customerId && typeof c.customerId === 'string') {
+      const match = c.customerId.match(/CUST-(\d+)/i);
+      if (match && match[1]) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+  }
+
+  let nextNum = maxNum + 1;
+  let candidate = `CUST-${nextNum}`;
+
+  while (
+    (await Customer.exists({ customerId: candidate })) ||
+    (await Bill.exists({ customerId: candidate }))
+  ) {
+    nextNum++;
+    candidate = `CUST-${nextNum}`;
+  }
+
+  return candidate;
+}
+
+// Helper function to generate guaranteed unique billId
+async function generateUniqueBillId(monthStr: string, customerId: string): Promise<string> {
+  const baseBillId = `BILL-${monthStr}-${customerId}`;
+  let candidate = baseBillId;
+  let counter = 1;
+
+  while (await Bill.exists({ billId: candidate })) {
+    candidate = `${baseBillId}-${counter}`;
+    counter++;
+  }
+
+  return candidate;
+}
+
 // POST /api/customers - Admin only create
 router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -144,8 +197,7 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
       return;
     }
 
-    const count = await Customer.countDocuments();
-    const customerId = req.body.customerId || `CUST-${1000 + count + 1}`;
+    const customerId = await generateNextCustomerId(req.body.customerId);
     const subType = subscriptionType || 'BOTH';
 
     const defaultPlan =
@@ -175,7 +227,7 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
     // Generate initial bill for current month if active
     if (newCustomer.monthlyBill > 0) {
       const monthStr = new Date().toISOString().slice(0, 7);
-      const billId = `BILL-${monthStr}-${customerId}`;
+      const billId = await generateUniqueBillId(monthStr, customerId);
 
       const initialBill = new Bill({
         billId,

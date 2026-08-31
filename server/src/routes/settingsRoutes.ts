@@ -69,4 +69,19 @@ router.put('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
   }
 });
 
+// DELETE /api/settings/clean-test-data - Admin purge sample test data
+router.delete('/clean-test-data', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { purgeTestData } = await import('../cleanData');
+    const result = await purgeTestData();
+    res.json({
+      success: true,
+      message: 'All sample test data has been permanently purged from the database.',
+      data: result.purged,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Failed to purge test data.' });
+  }
+});
+
 export default router;
