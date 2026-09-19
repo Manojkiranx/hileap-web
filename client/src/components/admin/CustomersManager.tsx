@@ -216,6 +216,23 @@ export const CustomersManager: React.FC = () => {
     }
   };
 
+  const [rechargeSelectCustomer, setRechargeSelectCustomer] = useState<Customer | null>(null);
+
+  const handleRechargeButtonClick = (customer: Customer) => {
+    const hasCable = Boolean(customer.cablePortal);
+    const hasWifi = Boolean(customer.wifiPortal);
+
+    if (hasCable && hasWifi && customer.cablePortal !== customer.wifiPortal) {
+      setRechargeSelectCustomer(customer);
+    } else if (hasCable) {
+      handleOpenCustomerPortal(customer, customer.cablePortal!);
+    } else if (hasWifi) {
+      handleOpenCustomerPortal(customer, customer.wifiPortal!);
+    } else {
+      handleOpenCustomerPortal(customer, availableCablePortals[0]?.name || 'TCCL');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header & Search Bar */}
@@ -286,7 +303,7 @@ export const CustomersManager: React.FC = () => {
           <option value="">All Subscription Statuses</option>
           <option value="ACTIVE">Active</option>
           <option value="PAUSED">Paused</option>
-          <option value="UNSUBSCRIBED">Deactive / Unsubscribed</option>
+          <option value="UNSUBSCRIBED">Deactivate / Unsubscribed</option>
         </select>
       </div>
 
@@ -357,17 +374,17 @@ export const CustomersManager: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Display Customer's Configured Clickable Portals (Req 8 & 9) */}
+                      {/* Display Customer's Configured Clickable Portals */}
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap items-center gap-1.5">
                           {(c.subscriptionType === 'CABLE' || c.subscriptionType === 'BOTH') && c.cablePortal && (
                             <button
                               onClick={() => handleOpenCustomerPortal(c, c.cablePortal!)}
                               className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 font-bold text-xs border border-amber-500/40 flex items-center gap-1 transition shadow-sm"
-                              title={`Open ${c.cablePortal} Recharge Portal`}
+                              title={`Redirect to ${c.cablePortal} Recharge Portal`}
                             >
                               <Globe className="w-3.5 h-3.5" />
-                              <span>{c.cablePortal}</span>
+                              <span>Recharge {c.cablePortal}</span>
                               <ExternalLink className="w-3 h-3" />
                             </button>
                           )}
@@ -376,16 +393,23 @@ export const CustomersManager: React.FC = () => {
                             <button
                               onClick={() => handleOpenCustomerPortal(c, c.wifiPortal!)}
                               className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-slate-950 font-bold text-xs border border-cyan-500/40 flex items-center gap-1 transition shadow-sm"
-                              title={`Open ${c.wifiPortal} Recharge Portal`}
+                              title={`Redirect to ${c.wifiPortal} Recharge Portal`}
                             >
                               <Wifi className="w-3.5 h-3.5" />
-                              <span>{c.wifiPortal}</span>
+                              <span>Recharge {c.wifiPortal}</span>
                               <ExternalLink className="w-3 h-3" />
                             </button>
                           )}
 
                           {!c.cablePortal && !c.wifiPortal && (
-                            <span className="text-xs text-slate-500 italic">No Portal Set</span>
+                            <button
+                              onClick={() => handleOpenCustomerPortal(c, 'TCCL')}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 font-bold text-xs border border-emerald-500/40 flex items-center gap-1 transition shadow-sm"
+                            >
+                              <Globe className="w-3.5 h-3.5" />
+                              <span>Recharge Portal</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
                           )}
                         </div>
                       </td>
@@ -419,27 +443,37 @@ export const CustomersManager: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Persistent Subscription Status (Active vs Deactive) (Req 11, 12, 14) */}
+                      {/* Subscription Status Display Badge (Active / Deactivate) */}
                       <td className="px-5 py-4">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSubscription(c.customerId)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition flex items-center gap-1.5 border shadow-sm ${
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold border ${
                             c.status === 'ACTIVE'
-                              ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                              : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/30'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-red-500/10 text-red-400 border-red-500/30'
                           }`}
-                          title="Click to toggle status (Active / Deactive)"
                         >
-                          <ToggleRight
-                            className={`w-4 h-4 ${c.status === 'ACTIVE' ? 'text-emerald-400' : 'text-red-400 rotate-180'}`}
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              c.status === 'ACTIVE' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+                            }`}
                           />
-                          <span>{c.status === 'ACTIVE' ? 'Active' : 'Deactive'}</span>
-                        </button>
+                          <span>{c.status === 'ACTIVE' ? 'Active' : 'Deactivate'}</span>
+                        </span>
                       </td>
 
+                      {/* Actions Column with Explicit Recharge Button */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleRechargeButtonClick(c)}
+                            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition"
+                            title={`Recharge subscriber on portal (${c.cablePortal || c.wifiPortal || 'TCCL'})`}
+                          >
+                            <Globe className="w-3.5 h-3.5 text-emerald-200" />
+                            <span>Recharge</span>
+                            <ExternalLink className="w-3 h-3 opacity-80" />
+                          </button>
+
                           <button
                             onClick={() => {
                               setEditCustomer(c);
@@ -717,6 +751,63 @@ export const CustomersManager: React.FC = () => {
                 className="text-xs text-slate-400 hover:text-white underline font-medium"
               >
                 Return to Customers List without changing status
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Recharge Portal Choice Modal for Combo Subscribers */}
+      {rechargeSelectCustomer && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-card max-w-md w-full p-6 rounded-2xl border border-emerald-500/40 text-center space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
+              <Globe className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-bold text-white">
+              Select Recharge Portal for {rechargeSelectCustomer.name}
+            </h3>
+
+            <p className="text-xs text-slate-300">
+              This subscriber has multiple active services. Select which operator portal you want to open:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              {rechargeSelectCustomer.cablePortal && (
+                <button
+                  onClick={() => {
+                    const c = rechargeSelectCustomer;
+                    setRechargeSelectCustomer(null);
+                    handleOpenCustomerPortal(c, c.cablePortal!);
+                  }}
+                  className="py-3 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-600/30 transition"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>Recharge {rechargeSelectCustomer.cablePortal}</span>
+                </button>
+              )}
+
+              {rechargeSelectCustomer.wifiPortal && (
+                <button
+                  onClick={() => {
+                    const c = rechargeSelectCustomer;
+                    setRechargeSelectCustomer(null);
+                    handleOpenCustomerPortal(c, c.wifiPortal!);
+                  }}
+                  className="py-3 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/30 transition"
+                >
+                  <Wifi className="w-4 h-4" />
+                  <span>Recharge {rechargeSelectCustomer.wifiPortal}</span>
+                </button>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setRechargeSelectCustomer(null)}
+                className="text-xs text-slate-400 hover:text-white underline font-medium"
+              >
+                Cancel
               </button>
             </div>
           </div>
