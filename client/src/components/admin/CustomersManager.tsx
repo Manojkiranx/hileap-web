@@ -374,42 +374,25 @@ export const CustomersManager: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Display Customer's Configured Clickable Portals */}
+                      {/* Display Customer's Configured Portals */}
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap items-center gap-1.5">
                           {(c.subscriptionType === 'CABLE' || c.subscriptionType === 'BOTH') && c.cablePortal && (
-                            <button
-                              onClick={() => handleOpenCustomerPortal(c, c.cablePortal!)}
-                              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 font-bold text-xs border border-amber-500/40 flex items-center gap-1 transition shadow-sm"
-                              title={`Redirect to ${c.cablePortal} Recharge Portal`}
-                            >
-                              <Globe className="w-3.5 h-3.5" />
-                              <span>Recharge {c.cablePortal}</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </button>
+                            <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 font-semibold text-xs border border-amber-500/20 flex items-center gap-1">
+                              <Globe className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{c.cablePortal}</span>
+                            </span>
                           )}
 
                           {(c.subscriptionType === 'WIFI' || c.subscriptionType === 'BOTH') && c.wifiPortal && (
-                            <button
-                              onClick={() => handleOpenCustomerPortal(c, c.wifiPortal!)}
-                              className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-slate-950 font-bold text-xs border border-cyan-500/40 flex items-center gap-1 transition shadow-sm"
-                              title={`Redirect to ${c.wifiPortal} Recharge Portal`}
-                            >
-                              <Wifi className="w-3.5 h-3.5" />
-                              <span>Recharge {c.wifiPortal}</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </button>
+                            <span className="px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-300 font-semibold text-xs border border-cyan-500/20 flex items-center gap-1">
+                              <Wifi className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>{c.wifiPortal}</span>
+                            </span>
                           )}
 
                           {!c.cablePortal && !c.wifiPortal && (
-                            <button
-                              onClick={() => handleOpenCustomerPortal(c, 'TCCL')}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 font-bold text-xs border border-emerald-500/40 flex items-center gap-1 transition shadow-sm"
-                            >
-                              <Globe className="w-3.5 h-3.5" />
-                              <span>Recharge Portal</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </button>
+                            <span className="text-xs text-slate-500 italic">No Portal Set</span>
                           )}
                         </div>
                       </td>
