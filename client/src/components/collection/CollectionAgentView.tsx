@@ -34,6 +34,7 @@ export const CollectionAgentView: React.FC = () => {
   // UPI Payment Modal State
   const [upiModal, setUpiModal] = useState<Customer | null>(null);
   const [amountReceived, setAmountReceived] = useState<string>('');
+  const [transactionId, setTransactionId] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CASH' | 'BANK_TRANSFER'>('UPI');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -72,6 +73,7 @@ export const CollectionAgentView: React.FC = () => {
   const handleOpenUpiModal = (customer: Customer) => {
     setUpiModal(customer);
     setAmountReceived(String(customer.pendingAmount || customer.monthlyBill || 0));
+    setTransactionId('');
     setErrorMsg('');
   };
 
@@ -89,17 +91,22 @@ export const CollectionAgentView: React.FC = () => {
 
     setSubmitting(true);
     try {
+      const notesStr = `Door-to-door collection by ${user?.name} (${user?.employeeId})${
+        paymentMethod === 'UPI' && transactionId.trim() ? ` | UPI Txn ID: ${transactionId.trim()}` : ''
+      }`;
+
       const res = await api.post('/payments', {
         customerId: upiModal.customerId,
         amount: amt,
         paymentMethod,
         billingMonth: new Date().toISOString().slice(0, 7),
-        notes: `Door-to-door collection by ${user?.name} (${user?.employeeId})`,
+        notes: notesStr,
       });
 
       if (res.data.success) {
         setUpiModal(null);
         setAmountReceived('');
+        setTransactionId('');
         fetchData(); // Refresh pending balances and payment history
       }
     } catch (err: any) {
@@ -434,6 +441,24 @@ export const CollectionAgentView: React.FC = () => {
                   <option value="BANK_TRANSFER">Bank Transfer</option>
                 </select>
               </div>
+
+              {paymentMethod === 'UPI' && (
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-emerald-500/30 space-y-1">
+                  <label className="block text-xs font-bold text-emerald-400">
+                    UPI Transaction ID / UTR Ref No. (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter UPI reference / UTR number (e.g. 426812345678)..."
+                    value={transactionId}
+                    onChange={(e) => setTransactionId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs font-mono text-white focus:outline-none focus:border-emerald-400"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Enter the 12-digit UTR or Transaction Ref ID for payment verification.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Amount Actually Received (₹)</label>
