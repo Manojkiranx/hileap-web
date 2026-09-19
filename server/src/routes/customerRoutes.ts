@@ -217,6 +217,8 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
       boxId: req.body.boxId || `BOX-${Date.now().toString().slice(-6)}`,
       setTopBoxSerial: setTopBoxSerial || '',
       routerSerial: routerSerial || '',
+      cablePortal: req.body.cablePortal || '',
+      wifiPortal: req.body.wifiPortal || '',
       status: req.body.status || 'ACTIVE',
       previousUnpaidBalance: req.body.previousUnpaidBalance || 0,
       notes: req.body.notes || '',
@@ -374,6 +376,45 @@ router.post('/:id/external-url', authenticateToken, requireAdmin, async (req: Au
     });
 
     res.json({ success: true, url: constructedUrl, boxId: customer.boxId });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/customers/:id/status - Admin explicit status set ('ACTIVE' | 'PAUSED' | 'UNSUBSCRIBED')
+router.patch('/:id/status', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { status } = req.body;
+    if (!['ACTIVE', 'PAUSED', 'UNSUBSCRIBED'].includes(status)) {
+      res.status(400).json({ success: false, message: 'Invalid status. Must be ACTIVE, PAUSED, or UNSUBSCRIBED.' });
+      return;
+    }
+
+    const customer = await Customer.findOne({ customerId: req.params.id });
+    if (!customer) {
+      res.status(404).json({ success: false, message: 'Customer not found.' });
+      return;
+    }
+
+    const previousStatus = customer.status;
+    customer.status = status;
+    await customer.save();
+
+    await logAuditEvent({
+      userEmployeeId: req.user!.employeeId,
+      userRole: req.user!.role,
+      action: 'UPDATE_CUSTOMER_STATUS',
+      entity: 'Customer',
+      entityId: customer.customerId,
+      previousValue: { status: previousStatus },
+      newValue: { status: customer.status },
+    });
+
+    res.json({
+      success: true,
+      message: `Customer ${customer.name} status updated to ${customer.status === 'ACTIVE' ? 'Active' : 'Deactive'}.`,
+      data: customer,
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -17,6 +17,8 @@ export interface ICustomer extends Document {
   boxId: string;
   setTopBoxSerial?: string;
   routerSerial?: string;
+  cablePortal?: string;
+  wifiPortal?: string;
   status: 'ACTIVE' | 'PAUSED' | 'UNSUBSCRIBED';
   previousUnpaidBalance: number;
   installationDate: Date;
@@ -47,6 +49,8 @@ const CustomerSchema: Schema = new Schema(
     boxId: { type: String, required: true, unique: true, index: true },
     setTopBoxSerial: { type: String },
     routerSerial: { type: String },
+    cablePortal: { type: String, default: '' },
+    wifiPortal: { type: String, default: '' },
     status: {
       type: String,
       enum: ['ACTIVE', 'PAUSED', 'UNSUBSCRIBED'],

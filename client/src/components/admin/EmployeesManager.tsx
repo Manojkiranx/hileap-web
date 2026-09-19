@@ -30,6 +30,7 @@ const INITIAL_AREAS = [
 export const EmployeesManager: React.FC = () => {
   const [employees, setEmployees] = useState<User[]>([]);
   const [areasList, setAreasList] = useState<string[]>(INITIAL_AREAS);
+  const [portalsList, setPortalsList] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [roleFilter, setRoleFilter] = useState<string>('');
 
@@ -45,6 +46,7 @@ export const EmployeesManager: React.FC = () => {
     role: 'Collection-Agent',
     assignedWorks: ['door_cable_collection'],
     assignedLocalities: ['Athippaly'],
+    assignedPortal: '',
     workingHours: { startTime: '09:00', endTime: '18:00', timezone: 'Asia/Kolkata' },
     salaryDetails: { baseSalary: 18000, allowances: 2500, deductions: 500 },
   });
@@ -76,9 +78,21 @@ export const EmployeesManager: React.FC = () => {
     }
   };
 
+  const fetchPortals = async () => {
+    try {
+      const res = await api.get('/portals');
+      if (res.data.success && Array.isArray(res.data.data)) {
+        setPortalsList(res.data.data.filter((p: any) => p.active));
+      }
+    } catch (err) {
+      console.error('Failed to fetch portals:', err);
+    }
+  };
+
   useEffect(() => {
     fetchEmployees();
     fetchAreas();
+    fetchPortals();
   }, [fetchEmployees]);
 
   const handleWorkToggle = (workKey: string) => {
@@ -497,6 +511,42 @@ export const EmployeesManager: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Dynamic Portal Selection (Req 2) */}
+              <div className="p-3 bg-slate-900 rounded-xl border border-cyan-500/30 space-y-2">
+                <label className="block text-xs font-bold text-cyan-400">
+                  Assigned Operator / Recharge Portal (Radio Button Selection)
+                </label>
+                <p className="text-[11px] text-slate-400">
+                  Select exactly one primary portal assigned to this employee. Configured dynamically from System Settings.
+                </p>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="userAssignedPortal"
+                      value=""
+                      checked={!formData.assignedPortal}
+                      onChange={() => setFormData({ ...formData, assignedPortal: '' })}
+                      className="text-cyan-500 focus:ring-cyan-500"
+                    />
+                    <span>None / All Portals</span>
+                  </label>
+                  {portalsList.map((p) => (
+                    <label key={p._id} className="flex items-center gap-2 text-xs text-white font-semibold cursor-pointer">
+                      <input
+                        type="radio"
+                        name="userAssignedPortal"
+                        value={p.name}
+                        checked={formData.assignedPortal === p.name}
+                        onChange={() => setFormData({ ...formData, assignedPortal: p.name })}
+                        className="text-cyan-500 focus:ring-cyan-500"
+                      />
+                      <span>{p.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
 
               {/* Work Authorization Checkboxes */}
               <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-2">

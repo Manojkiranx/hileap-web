@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
-import { Settings, Save, CheckCircle, Lock, KeyRound, AlertCircle } from 'lucide-react';
+import { Settings, Save, CheckCircle, Lock, KeyRound, AlertCircle, Globe, Plus, Trash2, Edit2, ShieldAlert } from 'lucide-react';
+import { Portal } from '../../types';
 
 export const SettingsView: React.FC = () => {
   const [settings, setSettings] = useState<any>({
@@ -14,6 +15,16 @@ export const SettingsView: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saved, setSaved] = useState<boolean>(false);
 
+  // Portal Management State
+  const [portals, setPortals] = useState<Portal[]>([]);
+  const [portalModalOpen, setPortalModalOpen] = useState<boolean>(false);
+  const [editingPortal, setEditingPortal] = useState<Portal | null>(null);
+  const [portalName, setPortalName] = useState<string>('');
+  const [portalUrl, setPortalUrl] = useState<string>('');
+  const [portalCategory, setPortalCategory] = useState<'CABLE' | 'WIFI' | 'BOTH' | 'OTHER'>('CABLE');
+  const [portalActive, setPortalActive] = useState<boolean>(true);
+  const [portalError, setPortalError] = useState<string | null>(null);
+
   // Change Password state
   const [oldPassword, setOldPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
@@ -22,6 +33,17 @@ export const SettingsView: React.FC = () => {
   const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
   const [pwdError, setPwdError] = useState<string | null>(null);
 
+  const fetchPortals = async () => {
+    try {
+      const res = await api.get('/portals');
+      if (res.data.success) {
+        setPortals(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load portals:', err);
+    }
+  };
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -29,6 +51,7 @@ export const SettingsView: React.FC = () => {
         if (res.data.success) {
           setSettings(res.data.data);
         }
+        await fetchPortals();
       } catch (err) {
         console.error('Failed to load settings:', err);
       } finally {
@@ -90,6 +113,68 @@ export const SettingsView: React.FC = () => {
     }
   };
 
+  const handleOpenAddPortal = () => {
+    setEditingPortal(null);
+    setPortalName('');
+    setPortalUrl('https://');
+    setPortalCategory('CABLE');
+    setPortalActive(true);
+    setPortalError(null);
+    setPortalModalOpen(true);
+  };
+
+  const handleOpenEditPortal = (p: Portal) => {
+    setEditingPortal(p);
+    setPortalName(p.name);
+    setPortalUrl(p.url);
+    setPortalCategory(p.category || 'CABLE');
+    setPortalActive(p.active);
+    setPortalError(null);
+    setPortalModalOpen(true);
+  };
+
+  const handleSavePortal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPortalError(null);
+
+    if (!portalName.trim() || !portalUrl.trim()) {
+      setPortalError('Portal Name and Portal URL are required.');
+      return;
+    }
+
+    try {
+      if (editingPortal) {
+        await api.put(`/portals/${editingPortal._id}`, {
+          name: portalName.trim(),
+          url: portalUrl.trim(),
+          category: portalCategory,
+          active: portalActive,
+        });
+      } else {
+        await api.post('/portals', {
+          name: portalName.trim(),
+          url: portalUrl.trim(),
+          category: portalCategory,
+          active: portalActive,
+        });
+      }
+      setPortalModalOpen(false);
+      await fetchPortals();
+    } catch (err: any) {
+      setPortalError(err.response?.data?.message || err.message || 'Failed to save portal.');
+    }
+  };
+
+  const handleDeletePortal = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete portal "${name}"?`)) return;
+    try {
+      await api.delete(`/portals/${id}`);
+      await fetchPortals();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to delete portal.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="glass-panel p-8 rounded-2xl text-center text-slate-400">
@@ -99,14 +184,186 @@ export const SettingsView: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-4xl">
       <div>
         <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
           <Settings className="w-6 h-6 text-sky-400" />
           System Settings & Security Management
         </h2>
-        <p className="text-xs text-slate-400">Configure company UPI details, external subscription integrations, and admin security password</p>
+        <p className="text-xs text-slate-400">
+          Manage recharge portals, company payment configuration, and admin security password
+        </p>
       </div>
+
+      {/* 1. Portal Management Section (Req 1) */}
+      <div className="glass-panel p-6 rounded-2xl space-y-4 border border-cyan-500/30">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+              <Globe className="w-4 h-4" />
+              Portal Management (Operator & Recharge Portals)
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Add and configure operator portals (e.g., TCCL, TACTV, WIFI). These dynamically power customer & user portal selections.
+            </p>
+          </div>
+          <button
+            onClick={handleOpenAddPortal}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Portal</span>
+          </button>
+        </div>
+
+        {/* Portals List Table */}
+        <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/60">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-900/90 text-slate-400 uppercase font-semibold">
+              <tr>
+                <th className="p-3">Portal Name</th>
+                <th className="p-3">Recharge / Portal URL</th>
+                <th className="p-3">Category</th>
+                <th className="p-3">Status</th>
+                <th className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800 text-slate-200">
+              {portals.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-4 text-center text-slate-500">
+                    No portals configured yet. Click "Add Portal" above.
+                  </td>
+                </tr>
+              ) : (
+                portals.map((p) => (
+                  <tr key={p._id} className="hover:bg-slate-900/40 transition">
+                    <td className="p-3 font-bold text-white">{p.name}</td>
+                    <td className="p-3 font-mono text-cyan-300 max-w-xs truncate">{p.url}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-semibold text-[10px]">
+                        {p.category}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      {p.active ? (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold text-[10px]">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 font-semibold text-[10px]">
+                          Inactive
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-3 text-right space-x-2">
+                      <button
+                        onClick={() => handleOpenEditPortal(p)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 transition"
+                        title="Edit Portal"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePortal(p._id!, p.name)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-900/40 text-red-400 transition"
+                        title="Delete Portal"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add / Edit Portal Modal */}
+      {portalModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="glass-card w-full max-w-md p-6 rounded-2xl border border-slate-700 space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Globe className="w-5 h-5 text-cyan-400" />
+              {editingPortal ? 'Edit Portal' : 'Add New Portal'}
+            </h3>
+
+            {portalError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{portalError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSavePortal} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Portal Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. TCCL, TACTV, WIFI, or New Portal"
+                  value={portalName}
+                  onChange={(e) => setPortalName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Portal / Recharge URL *</label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://example.com/recharge"
+                  value={portalUrl}
+                  onChange={(e) => setPortalUrl(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white font-mono text-xs focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Category</label>
+                <select
+                  value={portalCategory}
+                  onChange={(e) => setPortalCategory(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="CABLE">Cable TV</option>
+                  <option value="WIFI">Wi-Fi Broadband</option>
+                  <option value="BOTH">Combo / Both</option>
+                  <option value="OTHER">Other / General</option>
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={portalActive}
+                  onChange={(e) => setPortalActive(e.target.checked)}
+                  className="rounded border-slate-700 text-cyan-500"
+                />
+                <span className="text-xs text-slate-200 font-semibold">Active (Available for selections)</span>
+              </label>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPortalModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md transition"
+                >
+                  Save Portal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Admin Password Security Card */}
       <form onSubmit={handleChangePassword} className="glass-panel p-6 rounded-2xl space-y-4 border border-purple-500/30">
@@ -227,48 +484,6 @@ export const SettingsView: React.FC = () => {
             />
             <span className="text-xs text-slate-200 font-semibold">Allow Customer Overpayment Advance Balance</span>
           </label>
-        </div>
-
-        <div className="space-y-4 pt-4 border-t border-slate-800">
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider text-amber-400">
-            External Subscription Management URL Templates (Section 29)
-          </h3>
-          <p className="text-xs text-slate-400">
-            Use placeholders <code className="text-sky-300 font-mono">{'{BOX_ID}'}</code> and <code className="text-sky-300 font-mono">{'{CUSTOMER_ID}'}</code> which will be dynamically populated upon clicking Admin buttons.
-          </p>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Recharge URL Template</label>
-            <input
-              type="text"
-              required
-              value={settings.RECHARGE_URL || ''}
-              onChange={(e) => setSettings({ ...settings, RECHARGE_URL: e.target.value })}
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Pause / Resume URL Template</label>
-            <input
-              type="text"
-              required
-              value={settings.PAUSE_RESUME_URL || ''}
-              onChange={(e) => setSettings({ ...settings, PAUSE_RESUME_URL: e.target.value })}
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Unsubscribe URL Template</label>
-            <input
-              type="text"
-              required
-              value={settings.UNSUBSCRIBE_URL || ''}
-              onChange={(e) => setSettings({ ...settings, UNSUBSCRIBE_URL: e.target.value })}
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
-            />
-          </div>
         </div>
 
         <div className="pt-2">

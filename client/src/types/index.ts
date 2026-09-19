@@ -1,3 +1,13 @@
+export interface Portal {
+  _id?: string;
+  name: string;
+  url: string;
+  category: 'CABLE' | 'WIFI' | 'BOTH' | 'OTHER';
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface User {
   employeeId: string;
   name: string;
@@ -5,6 +15,8 @@ export interface User {
   email?: string;
   role: 'Admin' | 'Collection-Agent' | 'Customer-Service-Agent' | 'Customer';
   assignedWorks?: string[];
+  assignedLocalities?: string[];
+  assignedPortal?: string;
   employmentStatus?: 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE';
   workStatus?: 'AVAILABLE' | 'BUSY' | 'OFFLINE';
   salaryDetails?: {
@@ -37,6 +49,8 @@ export interface Customer {
   boxId: string;
   setTopBoxSerial?: string;
   routerSerial?: string;
+  cablePortal?: string;
+  wifiPortal?: string;
   status: 'ACTIVE' | 'PAUSED' | 'UNSUBSCRIBED';
   previousUnpaidBalance: number;
   installationDate?: string;

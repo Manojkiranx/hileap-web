@@ -8,9 +8,9 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'STAFF' | 'CUSTOMER'>('STAFF');
-  const [identifier, setIdentifier] = useState<string>('sabiesh@gmail.com');
-  const [password, setPassword] = useState<string>('HileapAdmin@2026');
-  const [customerInput, setCustomerInput] = useState<string>('CUST-1001');
+  const [identifier, setIdentifier] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [customerInput, setCustomerInput] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -40,17 +40,6 @@ export const LoginPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickLogin = (email: string, pass: string) => {
-    setActiveTab('STAFF');
-    setIdentifier(email);
-    setPassword(pass);
-  };
-
-  const handleQuickCustomer = (custId: string) => {
-    setActiveTab('CUSTOMER');
-    setCustomerInput(custId);
   };
 
   return (
@@ -182,50 +171,6 @@ export const LoginPage: React.FC = () => {
               </>
             )}
           </form>
-
-          {/* Quick Demo Login Switcher */}
-          <div className="pt-4 border-t border-slate-800/80 space-y-2">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">
-              Quick Role Switcher (Dev Credentials)
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@hileap.com', 'HileapAdmin@2026')}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-purple-500/30 text-purple-300 font-medium flex items-center justify-center gap-1.5 transition"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
-                <span>Admin</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickCustomer('CUST-1001')}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-emerald-500/30 text-emerald-300 font-medium flex items-center justify-center gap-1.5 transition"
-              >
-                <User className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Customer CUST-1001</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('coll1@hileap.com', 'AgentPass@123')}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-sky-500/30 text-sky-300 font-medium flex items-center justify-center gap-1.5 transition"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-sky-400" />
-                <span>Collection Agent</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('svc1@hileap.com', 'AgentPass@123')}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-amber-500/30 text-amber-300 font-medium flex items-center justify-center gap-1.5 transition"
-              >
-                <Wrench className="w-3.5 h-3.5 text-amber-400" />
-                <span>Service Tech 1</span>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -20,6 +20,7 @@ import auditRoutes from './routes/auditRoutes';
 import areaRoutes from './routes/areaRoutes';
 import settingsRoutes from './routes/settingsRoutes';
 import reportRoutes from './routes/reportRoutes';
+import portalRoutes from './routes/portalRoutes';
 
 dotenv.config();
 
@@ -80,6 +81,7 @@ app.use('/api/salaries', salaryRoutes);
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/portals', portalRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

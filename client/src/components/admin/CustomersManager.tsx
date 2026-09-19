@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import api from '../../services/api';
-import { Customer } from '../../types';
+import { Customer, Portal } from '../../types';
 import {
   Users,
   Search,
@@ -15,6 +15,9 @@ import {
   Trash2,
   AlertTriangle,
   ToggleRight,
+  Globe,
+  CheckCircle,
+  PowerOff,
 } from 'lucide-react';
 
 const AREA_PLACES = [
@@ -35,6 +38,7 @@ const AREA_PLACES = [
 export const CustomersManager: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [areasList, setAreasList] = useState<string[]>(AREA_PLACES);
+  const [portalsList, setPortalsList] = useState<Portal[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
   const [areaFilter, setAreaFilter] = useState<string>('');
@@ -43,7 +47,13 @@ export const CustomersManager: React.FC = () => {
   // Modal states
   const [showModal, setShowModal] = useState<boolean>(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
-  const [externalUrlModal, setExternalUrlModal] = useState<{ open: boolean; url: string; boxId: string; title: string } | null>(null);
+  const [returnWorkflowModal, setReturnWorkflowModal] = useState<{
+    open: boolean;
+    customer: Customer;
+    portalName: string;
+    portalUrl: string;
+  } | null>(null);
+
   const [formData, setFormData] = useState<Partial<Customer>>({
     name: '',
     phone: '',
@@ -53,6 +63,8 @@ export const CustomersManager: React.FC = () => {
     previousUnpaidBalance: 0,
     setTopBoxSerial: '',
     routerSerial: '',
+    cablePortal: 'TCCL',
+    wifiPortal: 'WIFI',
   });
 
   const fetchCustomers = useCallback(async () => {
@@ -84,10 +96,35 @@ export const CustomersManager: React.FC = () => {
     }
   };
 
+  const fetchPortals = async () => {
+    try {
+      const res = await api.get('/portals');
+      if (res.data.success && Array.isArray(res.data.data)) {
+        setPortalsList(res.data.data.filter((p: Portal) => p.active));
+      }
+    } catch (err) {
+      console.error('Error loading portals:', err);
+    }
+  };
+
   useEffect(() => {
     fetchCustomers();
     fetchAreas();
+    fetchPortals();
   }, [fetchCustomers]);
+
+  // Cable portals filtered from DB (category CABLE, BOTH, or standard)
+  const cablePortals = portalsList.filter((p) => p.category === 'CABLE' || p.category === 'BOTH' || p.name === 'TCCL' || p.name === 'TACTV');
+  const availableCablePortals = cablePortals.length > 0 ? cablePortals : [
+    { name: 'TCCL', url: 'https://tccl.in/recharge' },
+    { name: 'TACTV', url: 'https://tactv.in/recharge' }
+  ];
+
+  // WiFi portals filtered from DB (category WIFI, BOTH, or standard)
+  const wifiPortals = portalsList.filter((p) => p.category === 'WIFI' || p.category === 'BOTH' || p.name === 'WIFI');
+  const availableWifiPortals = wifiPortals.length > 0 ? wifiPortals : [
+    { name: 'WIFI', url: 'https://external-recharge-portal.example.com/wifi-recharge' }
+  ];
 
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,19 +152,38 @@ export const CustomersManager: React.FC = () => {
     }
   };
 
-  const handleExternalAction = async (customerId: string, actionType: 'recharge' | 'pause_resume' | 'unsubscribe') => {
+  // Launch Portal Navigation & Return Workflow (Req 9, 10, 11, 12, 13, 14)
+  const handleOpenCustomerPortal = (customer: Customer, portalNameStr: string) => {
+    // Find portal URL from database or default
+    const foundPortal = portalsList.find((p) => p.name.toUpperCase() === portalNameStr.toUpperCase());
+    let targetUrl = foundPortal ? foundPortal.url : 'https://external-recharge-portal.example.com/recharge';
+
+    targetUrl = targetUrl
+      .replace('{BOX_ID}', encodeURIComponent(customer.boxId || ''))
+      .replace('{CUSTOMER_ID}', encodeURIComponent(customer.customerId || ''));
+
+    // 1. Open external portal in new tab
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+
+    // 2. Present Return Workflow modal on Customers page for exact status updating
+    setReturnWorkflowModal({
+      open: true,
+      customer,
+      portalName: portalNameStr,
+      portalUrl: targetUrl,
+    });
+  };
+
+  // Post-Portal Status Action (Req 11 & 12)
+  const handleSetCustomerStatus = async (customerId: string, targetStatus: 'ACTIVE' | 'UNSUBSCRIBED') => {
     try {
-      const res = await api.post(`/customers/${customerId}/external-url`, { actionType });
+      const res = await api.patch(`/customers/${customerId}/status`, { status: targetStatus });
       if (res.data.success) {
-        setExternalUrlModal({
-          open: true,
-          url: res.data.url,
-          boxId: res.data.boxId,
-          title: `External Portal Integration (${actionType.toUpperCase()})`,
-        });
+        setReturnWorkflowModal(null);
+        await fetchCustomers();
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Failed to generate external URL.');
+      alert(err.response?.data?.message || err.message || 'Failed to update customer status.');
     }
   };
 
@@ -169,7 +225,7 @@ export const CustomersManager: React.FC = () => {
             <Users className="w-6 h-6 text-sky-400" />
             Subscriber Customer Database
           </h2>
-          <p className="text-xs text-slate-400">Manage subscriptions, automatic balance ledgers & external integrations</p>
+          <p className="text-xs text-slate-400">Manage subscriptions, automatic balance ledgers & operator recharge portal navigation</p>
         </div>
 
         <button
@@ -184,6 +240,8 @@ export const CustomersManager: React.FC = () => {
               previousUnpaidBalance: 0,
               setTopBoxSerial: '',
               routerSerial: '',
+              cablePortal: availableCablePortals[0]?.name || 'TCCL',
+              wifiPortal: availableWifiPortals[0]?.name || 'WIFI',
             });
             setShowModal(true);
           }}
@@ -228,7 +286,7 @@ export const CustomersManager: React.FC = () => {
           <option value="">All Subscription Statuses</option>
           <option value="ACTIVE">Active</option>
           <option value="PAUSED">Paused</option>
-          <option value="UNSUBSCRIBED">Unsubscribed</option>
+          <option value="UNSUBSCRIBED">Deactive / Unsubscribed</option>
         </select>
       </div>
 
@@ -240,11 +298,11 @@ export const CustomersManager: React.FC = () => {
               <tr>
                 <th className="px-5 py-4">Customer Details</th>
                 <th className="px-5 py-4">Subscription</th>
-                <th className="px-5 py-4">Box / Hardware ID</th>
+                <th className="px-5 py-4">Configured Portal(s)</th>
                 <th className="px-5 py-4">Monthly Bill</th>
                 <th className="px-5 py-4">Pending Balance</th>
-                <th className="px-5 py-4">Subscription Status & Toggle</th>
-                <th className="px-5 py-4 text-right">Actions / External</th>
+                <th className="px-5 py-4">Subscription Status</th>
+                <th className="px-5 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -299,17 +357,44 @@ export const CustomersManager: React.FC = () => {
                         </div>
                       </td>
 
-                      <td className="px-5 py-4 font-mono text-xs text-slate-300">
-                        <p className="font-bold text-sky-300">Box ID: {c.boxId}</p>
-                        {c.setTopBoxSerial && <p className="text-[11px] text-slate-400">STB: {c.setTopBoxSerial}</p>}
-                        {c.routerSerial && <p className="text-[11px] text-slate-400">Router: {c.routerSerial}</p>}
+                      {/* Display Customer's Configured Clickable Portals (Req 8 & 9) */}
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {(c.subscriptionType === 'CABLE' || c.subscriptionType === 'BOTH') && c.cablePortal && (
+                            <button
+                              onClick={() => handleOpenCustomerPortal(c, c.cablePortal!)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 font-bold text-xs border border-amber-500/40 flex items-center gap-1 transition shadow-sm"
+                              title={`Open ${c.cablePortal} Recharge Portal`}
+                            >
+                              <Globe className="w-3.5 h-3.5" />
+                              <span>{c.cablePortal}</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {(c.subscriptionType === 'WIFI' || c.subscriptionType === 'BOTH') && c.wifiPortal && (
+                            <button
+                              onClick={() => handleOpenCustomerPortal(c, c.wifiPortal!)}
+                              className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-slate-950 font-bold text-xs border border-cyan-500/40 flex items-center gap-1 transition shadow-sm"
+                              title={`Open ${c.wifiPortal} Recharge Portal`}
+                            >
+                              <Wifi className="w-3.5 h-3.5" />
+                              <span>{c.wifiPortal}</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {!c.cablePortal && !c.wifiPortal && (
+                            <span className="text-xs text-slate-500 italic">No Portal Set</span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-5 py-4 font-bold text-slate-100">
                         ₹{(c.monthlyBill || 0).toLocaleString('en-IN')}
                       </td>
 
-                      {/* Pending Balance with 2+ Months Red Warning Highlight */}
+                      {/* Pending Balance */}
                       <td className="px-5 py-4">
                         <div className="space-y-1">
                           <span
@@ -334,7 +419,7 @@ export const CustomersManager: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Status & Subscribe/Unsubscribe Toggle Button */}
+                      {/* Persistent Subscription Status (Active vs Deactive) (Req 11, 12, 14) */}
                       <td className="px-5 py-4">
                         <button
                           type="button"
@@ -344,18 +429,17 @@ export const CustomersManager: React.FC = () => {
                               ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                               : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/30'
                           }`}
-                          title="Click to toggle subscription status (Active / Unsubscribed)"
+                          title="Click to toggle status (Active / Deactive)"
                         >
                           <ToggleRight
                             className={`w-4 h-4 ${c.status === 'ACTIVE' ? 'text-emerald-400' : 'text-red-400 rotate-180'}`}
                           />
-                          <span>{c.status === 'ACTIVE' ? 'Subscribed' : 'Unsubscribed'}</span>
+                          <span>{c.status === 'ACTIVE' ? 'Active' : 'Deactive'}</span>
                         </button>
                       </td>
 
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {/* Edit button */}
                           <button
                             onClick={() => {
                               setEditCustomer(c);
@@ -368,30 +452,12 @@ export const CustomersManager: React.FC = () => {
                             <Edit className="w-4 h-4" />
                           </button>
 
-                          {/* Permanent Hard Delete button */}
                           <button
                             onClick={() => handleDeleteCustomer(c.customerId, c.name)}
                             className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500 text-red-300 hover:text-white border border-red-500/30 transition"
-                            title="Permanently Delete Customer from Database"
+                            title="Permanently Delete Customer"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
-
-                          {/* External Recharge Redirect (Section 29) */}
-                          <button
-                            onClick={() => handleExternalAction(c.customerId, 'recharge')}
-                            className="px-2.5 py-1 rounded-lg bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/30 text-xs font-semibold transition flex items-center gap-1"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            Recharge
-                          </button>
-
-                          {/* External Pause/Resume Redirect */}
-                          <button
-                            onClick={() => handleExternalAction(c.customerId, 'pause_resume')}
-                            className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white border border-amber-500/30 text-xs font-semibold transition"
-                          >
-                            Pause/Resume
                           </button>
                         </div>
                       </td>
@@ -419,7 +485,6 @@ export const CustomersManager: React.FC = () => {
 
             <form onSubmit={handleSaveCustomer} className="space-y-4">
               <div className="space-y-4">
-                {/* 1. Name */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Customer Name *</label>
                   <input
@@ -433,7 +498,6 @@ export const CustomersManager: React.FC = () => {
                   />
                 </div>
 
-                {/* 2. Area Dropdown */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Area / Locality *</label>
                   <select
@@ -450,12 +514,11 @@ export const CustomersManager: React.FC = () => {
                   </select>
                 </div>
 
-                {/* 3. Phone (Optional) */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Phone Number (Optional)</label>
                   <input
                     type="text"
-                    placeholder="Enter phone number (optional)..."
+                    placeholder="Enter phone number..."
                     value={formData.phone || ''}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -463,7 +526,6 @@ export const CustomersManager: React.FC = () => {
                   />
                 </div>
 
-                {/* 4. Service Choice */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Required Service(s) *</label>
                   <select
@@ -479,7 +541,60 @@ export const CustomersManager: React.FC = () => {
                   </select>
                 </div>
 
-                {/* 5. Monthly Subscription Rate */}
+                {/* Cable Portal Selection Radio Buttons (Req 5) */}
+                {(formData.subscriptionType === 'CABLE' || formData.subscriptionType === 'BOTH') && (
+                  <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/30 space-y-2">
+                    <label className="block text-xs font-bold text-amber-400">
+                      Cable Portal Selection (Radio Buttons) *
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                      Select exactly one Cable operator portal. (e.g., TCCL or TACTV)
+                    </p>
+                    <div className="flex flex-wrap gap-4 pt-1">
+                      {availableCablePortals.map((p) => (
+                        <label key={p.name} className="flex items-center gap-2 text-xs font-bold text-white cursor-pointer">
+                          <input
+                            type="radio"
+                            name="customerCablePortal"
+                            value={p.name}
+                            checked={formData.cablePortal === p.name}
+                            onChange={() => setFormData({ ...formData, cablePortal: p.name })}
+                            className="text-amber-500 focus:ring-amber-500"
+                          />
+                          <span>{p.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* WiFi Portal Selection Radio Buttons (Req 6) */}
+                {(formData.subscriptionType === 'WIFI' || formData.subscriptionType === 'BOTH') && (
+                  <div className="p-3 rounded-xl bg-slate-900 border border-cyan-500/30 space-y-2">
+                    <label className="block text-xs font-bold text-cyan-400">
+                      WiFi Portal Selection (Radio Buttons) *
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                      Select WiFi operator portal. (e.g., WIFI)
+                    </p>
+                    <div className="flex flex-wrap gap-4 pt-1">
+                      {availableWifiPortals.map((p) => (
+                        <label key={p.name} className="flex items-center gap-2 text-xs font-bold text-white cursor-pointer">
+                          <input
+                            type="radio"
+                            name="customerWifiPortal"
+                            value={p.name}
+                            checked={formData.wifiPortal === p.name}
+                            onChange={() => setFormData({ ...formData, wifiPortal: p.name })}
+                            className="text-cyan-500 focus:ring-cyan-500"
+                          />
+                          <span>{p.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Monthly Subscription Rate (₹) *</label>
                   <input
@@ -494,7 +609,6 @@ export const CustomersManager: React.FC = () => {
                   />
                 </div>
 
-                {/* 6. Old Balance / Pending Balance (Optional) */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Old Balance / Pending Balance (₹) (Optional)</label>
                   <input
@@ -508,7 +622,6 @@ export const CustomersManager: React.FC = () => {
                   />
                 </div>
 
-                {/* Setup Box Number (Conditional for Cable TV or Both) */}
                 {(formData.subscriptionType === 'CABLE' || formData.subscriptionType === 'BOTH') && (
                   <div>
                     <label className="block text-xs font-semibold text-sky-400 mb-1">Setup Box Number (Cable TV)</label>
@@ -523,7 +636,6 @@ export const CustomersManager: React.FC = () => {
                   </div>
                 )}
 
-                {/* Modem/Router Number (Conditional for WiFi or Both) */}
                 {(formData.subscriptionType === 'WIFI' || formData.subscriptionType === 'BOTH') && (
                   <div>
                     <label className="block text-xs font-semibold text-purple-400 mb-1">Modem / Router Number (WiFi Service)</label>
@@ -559,36 +671,53 @@ export const CustomersManager: React.FC = () => {
         </div>
       )}
 
-      {/* External Integration Redirect Modal (Section 29) */}
-      {externalUrlModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="glass-card max-w-md w-full p-6 rounded-2xl border border-sky-500/40 text-center space-y-4 glow-sky">
-            <div className="w-12 h-12 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center mx-auto border border-sky-500/30">
-              <ExternalLink className="w-6 h-6" />
+      {/* Post-Portal Redirect Activation / Deactivation Action Modal (Req 10, 11, 12, 13) */}
+      {returnWorkflowModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-card max-w-lg w-full p-6 rounded-2xl border border-sky-500/40 text-center space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto border border-cyan-500/30">
+              <Globe className="w-6 h-6" />
             </div>
-            <h3 className="text-lg font-bold text-white">{externalUrlModal.title}</h3>
+
+            <h3 className="text-lg font-bold text-white">
+              Portal Action Workflow: {returnWorkflowModal.customer.name} ({returnWorkflowModal.portalName})
+            </h3>
+
             <p className="text-xs text-slate-300">
-              Constructed deep-link parameter passing Box ID <strong className="text-sky-300">{externalUrlModal.boxId}</strong> to official external portal:
+              External portal <strong className="text-cyan-400">{returnWorkflowModal.portalName}</strong> was launched in a new tab.
+              Please select the exact result performed on the external portal to update this customer's status in MongoDB:
             </p>
-            <div className="p-3 bg-slate-900 rounded-xl text-left font-mono text-[11px] text-slate-300 border border-slate-800 break-all">
-              {externalUrlModal.url}
+
+            <div className="p-3 bg-slate-900/90 rounded-xl text-left font-mono text-[11px] text-slate-400 border border-slate-800 break-all">
+              Redirect URL: {returnWorkflowModal.portalUrl}
             </div>
-            <div className="flex gap-3 pt-2">
+
+            {/* Exact Action Buttons for Active vs Deactive */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
               <button
-                onClick={() => setExternalUrlModal(null)}
-                className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold"
+                onClick={() => handleSetCustomerStatus(returnWorkflowModal.customer.customerId, 'ACTIVE')}
+                className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition"
               >
-                Close
+                <CheckCircle className="w-4 h-4" />
+                <span>Mark as Active (Recharged)</span>
               </button>
-              <a
-                href={externalUrlModal.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold flex items-center justify-center gap-1 shadow-md"
+
+              <button
+                onClick={() => handleSetCustomerStatus(returnWorkflowModal.customer.customerId, 'UNSUBSCRIBED')}
+                className="py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition"
               >
-                <span>Proceed to External Portal</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
+                <PowerOff className="w-4 h-4" />
+                <span>Mark as Deactive</span>
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800/80">
+              <button
+                onClick={() => setReturnWorkflowModal(null)}
+                className="text-xs text-slate-400 hover:text-white underline font-medium"
+              >
+                Return to Customers List without changing status
+              </button>
             </div>
           </div>
         </div>

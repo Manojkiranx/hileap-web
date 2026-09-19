@@ -9,6 +9,7 @@ export interface IUser extends Document {
   role: 'Admin' | 'Collection-Agent' | 'Customer-Service-Agent';
   assignedWorks: string[]; // e.g. ['door_cable_collection', 'door_wifi_collection', 'customer_service']
   assignedLocalities: string[]; // e.g. ['Athippaly', 'Kaaramoola']
+  assignedPortal?: string; // e.g. "TCCL" or "TACTV" or "WIFI"
   employmentStatus: 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE';
   workStatus: 'AVAILABLE' | 'BUSY' | 'OFFLINE';
   salaryDetails: {
@@ -41,6 +42,7 @@ const UserSchema: Schema = new Schema(
     },
     assignedWorks: [{ type: String }],
     assignedLocalities: [{ type: String }],
+    assignedPortal: { type: String, default: '' },
     employmentStatus: {
       type: String,
       enum: ['ACTIVE', 'INACTIVE', 'ON_LEAVE'],

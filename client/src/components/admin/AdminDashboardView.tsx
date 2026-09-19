@@ -40,18 +40,22 @@ export const AdminDashboardView: React.FC = () => {
 
   // Sample data for charts
   const collectionTrendData = [
-    { month: 'Mar', collection: 42000 },
-    { month: 'Apr', collection: 48000 },
-    { month: 'May', collection: 53000 },
-    { month: 'Jun', collection: 51000 },
-    { month: 'Jul', collection: 62000 },
-    { month: 'Aug', collection: metrics?.monthCollection || 68500 },
+    { month: 'Mar', billing: 50000, collection: 42000 },
+    { month: 'Apr', billing: 52000, collection: 48000 },
+    { month: 'May', billing: 55000, collection: 53000 },
+    { month: 'Jun', billing: 54000, collection: 51000 },
+    { month: 'Jul', billing: 65000, collection: 62000 },
+    { month: 'Aug', billing: metrics?.totalCurrentMonthBill || 70000, collection: metrics?.monthCollection || 68500 },
   ];
+
+  const trendData = metrics?.monthlyTrendData && metrics.monthlyTrendData.length > 0
+    ? metrics.monthlyTrendData
+    : collectionTrendData;
 
   return (
     <div className="space-y-6">
       {/* Top Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Total Customers */}
         <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
           <div className="flex items-center justify-between">
@@ -63,24 +67,40 @@ export const AdminDashboardView: React.FC = () => {
                 {metrics?.activeCustomers || 0} Active Subscriptions
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-500/20 group-hover:scale-110 transition-transform">
-              <Users className="w-6 h-6" />
+            <div className="p-3 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-500/20 group-hover:scale-110 transition-transform">
+              <Users className="w-5 h-5" />
             </div>
           </div>
         </div>
 
-        {/* Total Pending Balance */}
+        {/* Current Month Bill */}
         <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Pending Balance</p>
-              <h3 className="text-2xl font-extrabold text-amber-400 mt-1">
-                ₹{(metrics?.totalPendingAmount || 0).toLocaleString('en-IN')}
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Month Bill</p>
+              <h3 className="text-2xl font-extrabold text-sky-400 mt-1">
+                ₹{(metrics?.totalCurrentMonthBill || 0).toLocaleString('en-IN')}
               </h3>
-              <p className="text-xs text-slate-400 mt-2">Auto Calculated Ledger</p>
+              <p className="text-xs text-slate-400 mt-2">New Issued Charges</p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:scale-110 transition-transform">
-              <Clock className="w-6 h-6" />
+            <div className="p-3 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-500/20 group-hover:scale-110 transition-transform">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Old Balance */}
+        <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Old Balance</p>
+              <h3 className="text-2xl font-extrabold text-amber-400 mt-1">
+                ₹{(metrics?.totalOldBalance || 0).toLocaleString('en-IN')}
+              </h3>
+              <p className="text-xs text-slate-400 mt-2">Past Months Accumulated</p>
+            </div>
+            <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:scale-110 transition-transform">
+              <Clock className="w-5 h-5" />
             </div>
           </div>
         </div>
@@ -93,13 +113,12 @@ export const AdminDashboardView: React.FC = () => {
               <h3 className="text-2xl font-extrabold text-emerald-400 mt-1">
                 ₹{(metrics?.monthCollection || 0).toLocaleString('en-IN')}
               </h3>
-              <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                Total: ₹{(metrics?.totalCollection || 0).toLocaleString('en-IN')}
+              <p className="text-xs text-slate-400 mt-2">
+                Total Pending: ₹{(metrics?.totalPendingAmount || 0).toLocaleString('en-IN')}
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:scale-110 transition-transform">
-              <CreditCard className="w-6 h-6" />
+            <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:scale-110 transition-transform">
+              <CreditCard className="w-5 h-5" />
             </div>
           </div>
         </div>
@@ -109,14 +128,14 @@ export const AdminDashboardView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Field Techs</p>
-              <h3 className="text-2xl font-extrabold text-sky-300 mt-1">{metrics?.serviceAgentsCount || 0}</h3>
+              <h3 className="text-2xl font-extrabold text-purple-300 mt-1">{metrics?.serviceAgentsCount || 0}</h3>
               <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5 text-sky-400" />
+                <UserCheck className="w-3.5 h-3.5 text-purple-400" />
                 {metrics?.collectionAgentsCount || 0} Collection Agents
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-purple-500/10 text-purple-400 border border-purple-500/20 group-hover:scale-110 transition-transform">
-              <UserCheck className="w-6 h-6" />
+            <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-400 border border-purple-500/20 group-hover:scale-110 transition-transform">
+              <UserCheck className="w-5 h-5" />
             </div>
           </div>
         </div>
@@ -126,32 +145,45 @@ export const AdminDashboardView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Collection Growth Area Chart */}
         <div className="lg:col-span-2 glass-panel p-6 rounded-2xl space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <h3 className="text-base font-bold text-white">Monthly Collection Revenue (₹)</h3>
-              <p className="text-xs text-slate-400">Payment collections across cable & Wi-Fi subscribers</p>
+              <h3 className="text-base font-bold text-white">Billing vs Collection Trend (₹)</h3>
+              <p className="text-xs text-slate-400">Comparing monthly billing generated against collections</p>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              Live Ledger Sync
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-xs text-sky-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block" /> Billing
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" /> Collection
+              </span>
+            </div>
           </div>
 
           <div className="h-64 w-full pt-4">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={collectionTrendData}>
+              <AreaChart data={trendData}>
                 <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0284c7" stopOpacity={0.6} />
+                  <linearGradient id="colorBilling" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0284c7" stopOpacity={0.5} />
                     <stop offset="95%" stopColor="#0284c7" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorCollection" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="month" stroke="#64748b" fontSize={12} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v/1000}k`} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v >= 1000 ? (v/1000).toFixed(0) + 'k' : v}`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }}
-                  formatter={(val: any) => [`₹${Number(val).toLocaleString('en-IN')}`, 'Collection']}
+                  formatter={(val: any, name: any) => [
+                    `₹${Number(val).toLocaleString('en-IN')}`,
+                    name === 'billing' ? 'Monthly Billing' : 'Collection'
+                  ]}
                 />
-                <Area type="monotone" dataKey="collection" stroke="#0284c7" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                <Area type="monotone" dataKey="billing" name="billing" stroke="#0284c7" strokeWidth={2} fillOpacity={1} fill="url(#colorBilling)" />
+                <Area type="monotone" dataKey="collection" name="collection" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorCollection)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -204,3 +236,4 @@ export const AdminDashboardView: React.FC = () => {
     </div>
   );
 };
+
