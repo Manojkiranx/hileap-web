@@ -15,46 +15,93 @@ const router = Router();
 // GET /api/reports/dashboard-metrics - Admin Dashboard summary metrics
 router.get('/dashboard-metrics', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const totalCustomers = await Customer.countDocuments();
-    const activeCustomers = await Customer.countDocuments({ status: 'ACTIVE' });
-    const pausedCustomers = await Customer.countDocuments({ status: 'PAUSED' });
-    const unsubscribedCustomers = await Customer.countDocuments({ status: 'UNSUBSCRIBED' });
-
     const currentMonthStr = new Date().toISOString().slice(0, 7); // e.g. "2026-09"
     const monthStart = new Date(currentMonthStr + '-01T00:00:00.000Z');
 
-    // 1. Total Current Month Bill (Bills created for current month)
-    const currentMonthBills = await Bill.find({ month: currentMonthStr });
-    const totalCurrentMonthBill = currentMonthBills.reduce((acc, b) => acc + b.amount, 0);
+    const [
+      totalCustomers,
+      activeCustomers,
+      pausedCustomers,
+      unsubscribedCustomers,
+      currentMonthBillsAgg,
+      sumPreviousUnpaidAgg,
+      sumPastUnpaidBillsAgg,
+      monthPaymentsAgg,
+      allPaymentsAgg,
+      allBillsAgg,
+      totalEmployees,
+      collectionAgentsCount,
+      serviceAgentsCount,
+      workingAgentsCount,
+      openComplaints,
+      assignedComplaints,
+      inProgressComplaints,
+      completedComplaints,
+      availableInventory,
+      usedInventory,
+    ] = await Promise.all([
+      Customer.countDocuments(),
+      Customer.countDocuments({ status: 'ACTIVE' }),
+      Customer.countDocuments({ status: 'PAUSED' }),
+      Customer.countDocuments({ status: 'UNSUBSCRIBED' }),
 
-    // 2. Total Old Balance (Sum of initial previousUnpaidBalance + unpaid bills from past months)
-    const activeCustomersList = await Customer.find({ status: { $ne: 'UNSUBSCRIBED' } });
-    const sumPreviousUnpaid = activeCustomersList.reduce((acc, c) => acc + (c.previousUnpaidBalance || 0), 0);
+      // 1. Current Month Bills Total
+      Bill.aggregate([{ $match: { month: currentMonthStr } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
 
-    const pastUnpaidBills = await Bill.find({
-      month: { $lt: currentMonthStr },
-      status: { $ne: 'PAID' },
-    });
-    const sumPastUnpaidBills = pastUnpaidBills.reduce((acc, b) => acc + (b.amount - (b.paidAmount || 0)), 0);
+      // 2. Sum of Previous Unpaid Balances on Customers
+      Customer.aggregate([
+        { $match: { status: { $ne: 'UNSUBSCRIBED' } } },
+        { $group: { _id: null, total: { $sum: '$previousUnpaidBalance' } } },
+      ]),
 
+      // 3. Sum of Unpaid Bills from Past Months
+      Bill.aggregate([
+        { $match: { month: { $lt: currentMonthStr }, status: { $ne: 'PAID' } } },
+        { $group: { _id: null, total: { $sum: { $subtract: ['$amount', { $ifNull: ['$paidAmount', 0] }] } } } },
+      ]),
+
+      // 4. Month Collection
+      Payment.aggregate([
+        { $match: { status: 'SUCCESSFUL', paymentDate: { $gte: monthStart } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+
+      // 5. Total Collection All Time
+      Payment.aggregate([
+        { $match: { status: 'SUCCESSFUL' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+
+      // 6. Total Bills All Time
+      Bill.aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }]),
+
+      // Counts
+      User.countDocuments({ employmentStatus: 'ACTIVE' }),
+      User.countDocuments({ role: 'Collection-Agent', employmentStatus: 'ACTIVE' }),
+      User.countDocuments({ role: 'Customer-Service-Agent', employmentStatus: 'ACTIVE' }),
+      User.countDocuments({ role: 'Customer-Service-Agent', workStatus: 'BUSY' }),
+
+      Complaint.countDocuments({ status: 'OPEN' }),
+      Complaint.countDocuments({ status: 'ASSIGNED' }),
+      Complaint.countDocuments({ status: 'IN_PROGRESS' }),
+      Complaint.countDocuments({ status: 'COMPLETED' }),
+
+      InventoryItem.countDocuments({ status: 'AVAILABLE' }),
+      InventoryItem.countDocuments({ status: 'USED' }),
+    ]);
+
+    const totalCurrentMonthBill = currentMonthBillsAgg[0]?.total || 0;
+    const sumPreviousUnpaid = sumPreviousUnpaidAgg[0]?.total || 0;
+    const sumPastUnpaidBills = sumPastUnpaidBillsAgg[0]?.total || 0;
     const totalOldBalance = sumPreviousUnpaid + sumPastUnpaidBills;
 
-    // Collection metrics
-    const monthPayments = await Payment.find({
-      status: 'SUCCESSFUL',
-      paymentDate: { $gte: monthStart },
-    });
-    const monthCollection = monthPayments.reduce((acc, p) => acc + p.amount, 0);
+    const monthCollection = monthPaymentsAgg[0]?.total || 0;
+    const totalCollection = allPaymentsAgg[0]?.total || 0;
+    const totalBills = allBillsAgg[0]?.total || 0;
 
-    const allPayments = await Payment.find({ status: 'SUCCESSFUL' });
-    const totalCollection = allPayments.reduce((acc, p) => acc + p.amount, 0);
-
-    // Compute total pending across all active/paused customers
-    let totalPendingAmount = 0;
-    for (const c of activeCustomersList) {
-      const summary = await calculateCustomerPendingAmount(c.customerId);
-      totalPendingAmount += summary.pendingAmount;
-    }
+    // Yet to collect (total pending balance across all active customers)
+    const rawPending = sumPreviousUnpaid + totalBills - totalCollection;
+    const totalPendingAmount = Math.max(0, rawPending);
 
     // 6-Month Trend Data for Graph
     const trendMonths: string[] = [];
@@ -64,48 +111,38 @@ router.get('/dashboard-metrics', authenticateToken, requireAdmin, async (req: Au
       trendMonths.push(d.toISOString().slice(0, 7));
     }
 
-    const monthlyTrendData = await Promise.all(
-      trendMonths.map(async (mStr) => {
-        const mStart = new Date(mStr + '-01T00:00:00.000Z');
-        const mEnd = new Date(mStart.getFullYear(), mStart.getMonth() + 1, 1);
+    const [monthlyBillsAgg, monthlyPaymentsAgg] = await Promise.all([
+      Bill.aggregate([
+        { $match: { month: { $in: trendMonths } } },
+        { $group: { _id: '$month', total: { $sum: '$amount' } } },
+      ]),
+      Payment.aggregate([
+        { $match: { status: 'SUCCESSFUL' } },
+        {
+          $group: {
+            _id: { $substr: [{ $dateToString: { format: '%Y-%m-%d', date: '$paymentDate' } }, 0, 7] },
+            total: { $sum: '$amount' },
+          },
+        },
+      ]),
+    ]);
 
-        const mBills = await Bill.find({ month: mStr });
-        const billing = mBills.reduce((acc, b) => acc + b.amount, 0);
+    const billsMap: Record<string, number> = {};
+    monthlyBillsAgg.forEach((b) => { billsMap[b._id] = b.total; });
 
-        const mPays = await Payment.find({
-          status: 'SUCCESSFUL',
-          paymentDate: { $gte: mStart, $lt: mEnd },
-        });
-        const collection = mPays.reduce((acc, p) => acc + p.amount, 0);
+    const paymentsMap: Record<string, number> = {};
+    monthlyPaymentsAgg.forEach((p) => { paymentsMap[p._id] = p.total; });
 
-        // Format month name (e.g., "Sep")
-        const dateObj = new Date(mStr + '-01');
-        const monthLabel = dateObj.toLocaleString('en-US', { month: 'short' });
-
-        return {
-          monthKey: mStr,
-          month: monthLabel,
-          billing,
-          collection,
-        };
-      })
-    );
-
-    // Employee counts
-    const totalEmployees = await User.countDocuments({ employmentStatus: 'ACTIVE' });
-    const collectionAgentsCount = await User.countDocuments({ role: 'Collection-Agent', employmentStatus: 'ACTIVE' });
-    const serviceAgentsCount = await User.countDocuments({ role: 'Customer-Service-Agent', employmentStatus: 'ACTIVE' });
-    const workingAgentsCount = await User.countDocuments({ role: 'Customer-Service-Agent', workStatus: 'BUSY' });
-
-    // Complaint stats
-    const openComplaints = await Complaint.countDocuments({ status: 'OPEN' });
-    const assignedComplaints = await Complaint.countDocuments({ status: 'ASSIGNED' });
-    const inProgressComplaints = await Complaint.countDocuments({ status: 'IN_PROGRESS' });
-    const completedComplaints = await Complaint.countDocuments({ status: 'COMPLETED' });
-
-    // Inventory status
-    const availableInventory = await InventoryItem.countDocuments({ status: 'AVAILABLE' });
-    const usedInventory = await InventoryItem.countDocuments({ status: 'USED' });
+    const monthlyTrendData = trendMonths.map((mStr) => {
+      const dateObj = new Date(mStr + '-01');
+      const monthLabel = dateObj.toLocaleString('en-US', { month: 'short' });
+      return {
+        monthKey: mStr,
+        month: monthLabel,
+        billing: billsMap[mStr] || 0,
+        collection: paymentsMap[mStr] || 0,
+      };
+    });
 
     res.json({
       success: true,
@@ -117,6 +154,7 @@ router.get('/dashboard-metrics', authenticateToken, requireAdmin, async (req: Au
         totalCurrentMonthBill,
         totalOldBalance,
         totalPendingAmount,
+        yetToCollect: totalPendingAmount,
         monthCollection,
         totalCollection,
         monthlyTrendData,

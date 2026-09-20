@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import Payment from '../models/Payment';
+import Customer from '../models/Customer';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { requireAdmin, requireCollectionAgent, requireAnyRole } from '../middleware/rbac';
 import { recordPayment, correctPaymentEntry } from '../services/ledgerService';
@@ -27,8 +28,17 @@ router.get('/', authenticateToken, requireAnyRole('Admin', 'Collection-Agent'), 
       query.collectionAgentId = agentId;
     }
 
-    const payments = await Payment.find(query).sort({ paymentDate: -1 });
-    res.json({ success: true, count: payments.length, data: payments });
+    const payments = await Payment.find(query).sort({ paymentDate: -1 }).lean();
+    const customerIds = Array.from(new Set(payments.map((p) => p.customerId)));
+    const customerDocs = await Customer.find({ customerId: { $in: customerIds } }).select('customerId name').lean();
+    const customerMap = new Map<string, string>(customerDocs.map((c: any) => [c.customerId, c.name]));
+
+    const data = payments.map((p) => ({
+      ...p,
+      customerName: customerMap.get(p.customerId) || p.customerId,
+    }));
+
+    res.json({ success: true, count: data.length, data });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -56,28 +56,11 @@ export const AdminDashboardView: React.FC = () => {
     <div className="space-y-6">
       {/* Top Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Total Customers */}
+        {/* Total Current Month Bill */}
         <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Customers</p>
-              <h3 className="text-2xl font-extrabold text-white mt-1">{metrics?.totalCustomers || 0}</h3>
-              <p className="text-xs text-emerald-400 mt-2 font-medium flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                {metrics?.activeCustomers || 0} Active Subscriptions
-              </p>
-            </div>
-            <div className="p-3 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-500/20 group-hover:scale-110 transition-transform">
-              <Users className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        {/* Current Month Bill */}
-        <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Month Bill</p>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Current Month Bill</p>
               <h3 className="text-2xl font-extrabold text-sky-400 mt-1">
                 ₹{(metrics?.totalCurrentMonthBill || 0).toLocaleString('en-IN')}
               </h3>
@@ -89,32 +72,16 @@ export const AdminDashboardView: React.FC = () => {
           </div>
         </div>
 
-        {/* Old Balance */}
+        {/* Total Collected Amounts */}
         <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Old Balance</p>
-              <h3 className="text-2xl font-extrabold text-amber-400 mt-1">
-                ₹{(metrics?.totalOldBalance || 0).toLocaleString('en-IN')}
-              </h3>
-              <p className="text-xs text-slate-400 mt-2">Past Months Accumulated</p>
-            </div>
-            <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:scale-110 transition-transform">
-              <Clock className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        {/* Current Month Collection */}
-        <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">This Month Collection</p>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Collected Amounts</p>
               <h3 className="text-2xl font-extrabold text-emerald-400 mt-1">
                 ₹{(metrics?.monthCollection || 0).toLocaleString('en-IN')}
               </h3>
               <p className="text-xs text-slate-400 mt-2">
-                Total Pending: ₹{(metrics?.totalPendingAmount || 0).toLocaleString('en-IN')}
+                All-Time: ₹{(metrics?.totalCollection || 0).toLocaleString('en-IN')}
               </p>
             </div>
             <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:scale-110 transition-transform">
@@ -123,19 +90,51 @@ export const AdminDashboardView: React.FC = () => {
           </div>
         </div>
 
-        {/* Field Service Tech Agents */}
+        {/* Yet to Collect */}
         <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Field Techs</p>
-              <h3 className="text-2xl font-extrabold text-purple-300 mt-1">{metrics?.serviceAgentsCount || 0}</h3>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Yet to Collect</p>
+              <h3 className="text-2xl font-extrabold text-amber-400 mt-1">
+                ₹{(metrics?.totalPendingAmount || 0).toLocaleString('en-IN')}
+              </h3>
+              <p className="text-xs text-slate-400 mt-2">Total Pending Balance</p>
+            </div>
+            <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:scale-110 transition-transform">
+              <Clock className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Old Pendings */}
+        <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Old Pendings</p>
+              <h3 className="text-2xl font-extrabold text-red-400 mt-1">
+                ₹{(metrics?.totalOldBalance || 0).toLocaleString('en-IN')}
+              </h3>
+              <p className="text-xs text-slate-400 mt-2">Past Unpaid Accumulated</p>
+            </div>
+            <div className="p-3 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 group-hover:scale-110 transition-transform">
+              <Clock className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Total Customers & Active Field Techs */}
+        <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Subscribers</p>
+              <h3 className="text-2xl font-extrabold text-purple-300 mt-1">{metrics?.activeCustomers || 0}</h3>
               <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5 text-purple-400" />
-                {metrics?.collectionAgentsCount || 0} Collection Agents
+                <Users className="w-3.5 h-3.5 text-purple-400" />
+                {metrics?.totalCustomers || 0} Total Customers
               </p>
             </div>
             <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-400 border border-purple-500/20 group-hover:scale-110 transition-transform">
-              <UserCheck className="w-5 h-5" />
+              <Users className="w-5 h-5" />
             </div>
           </div>
         </div>

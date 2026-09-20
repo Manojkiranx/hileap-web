@@ -221,7 +221,7 @@ export const CollectionsManager: React.FC = () => {
             <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 font-semibold border-b border-slate-800">
               <tr>
                 <th className="px-5 py-4">Payment ID / Date</th>
-                <th className="px-5 py-4">Customer ID</th>
+                <th className="px-5 py-4">Customer Name</th>
                 <th className="px-5 py-4">Collection Agent ID</th>
                 <th className="px-5 py-4">Method</th>
                 <th className="px-5 py-4">Amount (₹)</th>
@@ -254,8 +254,9 @@ export const CollectionsManager: React.FC = () => {
                       </div>
                     </td>
 
-                    <td className="px-5 py-4 font-mono text-sky-400 font-semibold">
-                      {p.customerId}
+                    <td className="px-5 py-4">
+                      <p className="font-bold text-white text-sm">{(p as any).customerName || p.customerId}</p>
+                      <p className="text-xs font-mono text-sky-400">{p.customerId}</p>
                     </td>
 
                     <td className="px-5 py-4 font-mono text-slate-300">
