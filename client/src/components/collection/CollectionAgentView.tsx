@@ -18,6 +18,21 @@ import {
   Building2,
 } from 'lucide-react';
 
+const AREA_PLACES = [
+  'Athippaly',
+  'Athippaly vayal',
+  'Kaaramoola',
+  'Kallingara',
+  '4th mile',
+  'Manjamoola',
+  'Thakaramoola',
+  'Madamoola',
+  'Edalamoola',
+  'Nambalakodu',
+  'Kammathi',
+  'Killur',
+];
+
 export const CollectionAgentView: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'pending' | 'collected'>('pending');
@@ -30,8 +45,6 @@ export const CollectionAgentView: React.FC = () => {
     COMPANY_UPI_ID: 'hileapnetwork@upi',
     COMPANY_UPI_QR_URL: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=hileapnetwork@upi&pn=HiLeap%20Network',
   });
-
-  const [sortBy, setSortBy] = useState<string>('area_asc');
 
   // UPI Payment Modal State
   const [upiModal, setUpiModal] = useState<Customer | null>(null);
@@ -72,19 +85,18 @@ export const CollectionAgentView: React.FC = () => {
   // Filter 2: Payment Collected Customers (Pending balance <= 0 or zero pending)
   const collectedCustomers = customers.filter((c) => (c.pendingAmount || 0) <= 0);
 
-  // Sort Helper
-  const sortCustomers = (list: Customer[]) => {
-    return [...list].sort((a, b) => {
-      if (sortBy === 'area_asc') return (a.area || '').localeCompare(b.area || '');
-      if (sortBy === 'area_desc') return (b.area || '').localeCompare(a.area || '');
-      if (sortBy === 'amount_desc') return (b.pendingAmount || 0) - (a.pendingAmount || 0);
-      if (sortBy === 'name_asc') return (a.name || '').localeCompare(b.name || '');
-      return 0;
-    });
-  };
+  // Dashboard Financial Metrics Calculation
+  const yetToCollectAmount = customers.reduce((acc, c) => acc + (c.pendingAmount || 0), 0);
+  const collectedAmount = paymentsHistory.reduce(
+    (acc, p) => acc + (p.status === 'SUCCESSFUL' ? p.amount : 0),
+    0
+  );
+  const totalCollectableAmount = yetToCollectAmount + collectedAmount;
 
-  const sortedPendingCustomers = sortCustomers(pendingCustomers);
-  const sortedCollectedCustomers = sortCustomers(collectedCustomers);
+  // Available Areas Dropdown List
+  const availableAreas = Array.from(
+    new Set([...AREA_PLACES, ...customers.map((c) => c.area).filter(Boolean)])
+  );
 
   const handleOpenUpiModal = (customer: Customer) => {
     setUpiModal(customer);
@@ -147,6 +159,51 @@ export const CollectionAgentView: React.FC = () => {
         </div>
       </div>
 
+      {/* Minimal Collection Dashboard Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Total Collectable Amount */}
+        <div className="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Collectable Amount</p>
+            <h3 className="text-xl font-extrabold text-white mt-1">
+              ₹{totalCollectableAmount.toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-slate-400 mt-1">{customers.length} Assigned Subscribers</p>
+          </div>
+          <div className="p-3 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            <Building2 className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Yet to be Collected Amount */}
+        <div className="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Yet to be Collected</p>
+            <h3 className="text-xl font-extrabold text-amber-400 mt-1">
+              ₹{yetToCollectAmount.toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-slate-400 mt-1">{pendingCustomers.length} Unpaid Subscribers</p>
+          </div>
+          <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <Clock className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Collected Amount */}
+        <div className="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Collected Amount</p>
+            <h3 className="text-xl font-extrabold text-emerald-400 mt-1">
+              ₹{collectedAmount.toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-slate-400 mt-1">{collectedCustomers.length} Paid / Recharged</p>
+          </div>
+          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
       {/* Tab Navigation & Search Controls */}
       <div className="glass-panel p-4 rounded-2xl space-y-4">
         {/* Navigation Tabs */}
@@ -182,8 +239,8 @@ export const CollectionAgentView: React.FC = () => {
           </button>
         </div>
 
-        {/* Filter & Sort Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Filter Controls */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
@@ -195,24 +252,21 @@ export const CollectionAgentView: React.FC = () => {
             />
           </div>
 
-          <input
-            type="text"
-            placeholder="Filter locality / area name..."
-            value={areaFilter}
-            onChange={(e) => setAreaFilter(e.target.value)}
-            className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-emerald-500"
-          />
-
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="px-4 py-2.5 rounded-xl bg-slate-900 border border-emerald-500/40 text-xs font-bold text-emerald-300 focus:outline-none focus:border-emerald-400"
-          >
-            <option value="area_asc">Sort by Area (A-Z)</option>
-            <option value="area_desc">Sort by Area (Z-A)</option>
-            <option value="amount_desc">Sort by Pending Amount (High to Low)</option>
-            <option value="name_asc">Sort by Customer Name (A-Z)</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+            <select
+              value={areaFilter}
+              onChange={(e) => setAreaFilter(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-semibold text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">All Areas / Localities</option>
+              {availableAreas.map((place) => (
+                <option key={place} value={place}>
+                  {place}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -223,7 +277,7 @@ export const CollectionAgentView: React.FC = () => {
             <div className="col-span-full p-8 text-center text-slate-400">
               Loading pending subscriber accounts...
             </div>
-          ) : sortedPendingCustomers.length === 0 ? (
+          ) : pendingCustomers.length === 0 ? (
             <div className="col-span-full p-8 text-center glass-panel rounded-2xl border border-emerald-500/30 space-y-2">
               <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto animate-bounce" />
               <h3 className="text-base font-bold text-white">All Collections Completed!</h3>
@@ -232,7 +286,7 @@ export const CollectionAgentView: React.FC = () => {
               </p>
             </div>
           ) : (
-            sortedPendingCustomers.map((c) => {
+            pendingCustomers.map((c) => {
               const isOverdue2Months = (c.monthlyBill || 0) > 0 && (c.pendingAmount || 0) >= (c.monthlyBill * 2);
 
               return (
@@ -319,12 +373,12 @@ export const CollectionAgentView: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sortedCollectedCustomers.length === 0 ? (
+              {collectedCustomers.length === 0 ? (
                 <div className="col-span-full py-6 text-center text-slate-400 text-xs">
                   No fully paid subscribers logged yet.
                 </div>
               ) : (
-                sortedCollectedCustomers.map((c) => (
+                collectedCustomers.map((c) => (
                   <div
                     key={c.customerId}
                     className="p-4 rounded-xl bg-slate-900/90 border border-emerald-500/30 space-y-2 relative overflow-hidden"
