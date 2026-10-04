@@ -28,6 +28,8 @@ router.get('/dashboard-metrics', authenticateToken, requireAdmin, async (req: Au
       sumPastUnpaidBillsAgg,
       monthPaymentsAgg,
       allPaymentsAgg,
+      upiPaymentsAgg,
+      cashPaymentsAgg,
       allBillsAgg,
       totalEmployees,
       collectionAgentsCount,
@@ -68,7 +70,19 @@ router.get('/dashboard-metrics', authenticateToken, requireAdmin, async (req: Au
 
       // 5. Total Collection All Time
       Payment.aggregate([
-        { $match: { status: 'SUCCESSFUL' } },
+        { $match: { status: { $in: ['SUCCESSFUL', 'CORRECTED'] } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+
+      // 5a. UPI Collected Total
+      Payment.aggregate([
+        { $match: { status: { $in: ['SUCCESSFUL', 'CORRECTED'] }, paymentMethod: 'UPI' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+
+      // 5b. Cash Collected Total
+      Payment.aggregate([
+        { $match: { status: { $in: ['SUCCESSFUL', 'CORRECTED'] }, paymentMethod: 'CASH' } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
 
@@ -97,6 +111,8 @@ router.get('/dashboard-metrics', authenticateToken, requireAdmin, async (req: Au
 
     const monthCollection = monthPaymentsAgg[0]?.total || 0;
     const totalCollection = allPaymentsAgg[0]?.total || 0;
+    const upiCollectedAmount = upiPaymentsAgg[0]?.total || 0;
+    const cashCollectedAmount = cashPaymentsAgg[0]?.total || 0;
     const totalBills = allBillsAgg[0]?.total || 0;
 
     // Yet to collect (total pending balance across all active customers)
@@ -117,7 +133,7 @@ router.get('/dashboard-metrics', authenticateToken, requireAdmin, async (req: Au
         { $group: { _id: '$month', total: { $sum: '$amount' } } },
       ]),
       Payment.aggregate([
-        { $match: { status: 'SUCCESSFUL' } },
+        { $match: { status: { $in: ['SUCCESSFUL', 'CORRECTED'] } } },
         {
           $group: {
             _id: { $substr: [{ $dateToString: { format: '%Y-%m-%d', date: '$paymentDate' } }, 0, 7] },
@@ -157,6 +173,8 @@ router.get('/dashboard-metrics', authenticateToken, requireAdmin, async (req: Au
         yetToCollect: totalPendingAmount,
         monthCollection,
         totalCollection,
+        upiCollectedAmount,
+        cashCollectedAmount,
         monthlyTrendData,
         totalEmployees,
         collectionAgentsCount,

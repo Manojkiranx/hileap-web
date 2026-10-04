@@ -7,6 +7,8 @@ import {
   Wrench,
   TrendingUp,
   Clock,
+  QrCode,
+  Banknote,
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 
@@ -72,16 +74,16 @@ export const AdminDashboardView: React.FC = () => {
           </div>
         </div>
 
-        {/* Total Collected Amounts */}
+        {/* Total Collected Amounts with UPI & Cash Breakdown */}
         <div className="glass-card p-5 rounded-2xl relative overflow-hidden group">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Collected Amounts</p>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Collected</p>
               <h3 className="text-2xl font-extrabold text-emerald-400 mt-1">
                 ₹{(metrics?.monthCollection || 0).toLocaleString('en-IN')}
               </h3>
-              <p className="text-xs text-slate-400 mt-2">
-                All-Time: ₹{(metrics?.totalCollection || 0).toLocaleString('en-IN')}
+              <p className="text-xs text-slate-400 mt-1">
+                UPI: ₹{(metrics?.upiCollectedAmount || 0).toLocaleString('en-IN')} | Cash: ₹{(metrics?.cashCollectedAmount || 0).toLocaleString('en-IN')}
               </p>
             </div>
             <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:scale-110 transition-transform">

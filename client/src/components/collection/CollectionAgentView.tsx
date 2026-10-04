@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import api from '../../services/api';
-import { Customer } from '../../types';
+import { Customer, Payment } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import {
   CreditCard,
@@ -16,6 +16,10 @@ import {
   Calendar,
   Check,
   Building2,
+  Wifi,
+  Tv,
+  Edit,
+  Banknote,
 } from 'lucide-react';
 
 const AREA_PLACES = [
@@ -36,8 +40,9 @@ const AREA_PLACES = [
 export const CollectionAgentView: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'pending' | 'collected'>('pending');
+  const [serviceFilter, setServiceFilter] = useState<'ALL' | 'CABLE' | 'WIFI'>('ALL');
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [paymentsHistory, setPaymentsHistory] = useState<any[]>([]);
+  const [paymentsHistory, setPaymentsHistory] = useState<Payment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
   const [areaFilter, setAreaFilter] = useState<string>('');
@@ -46,13 +51,22 @@ export const CollectionAgentView: React.FC = () => {
     COMPANY_UPI_QR_URL: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=hileapnetwork@upi&pn=HiLeap%20Network',
   });
 
-  // UPI Payment Modal State
+  // UPI / Payment Recording Modal State
   const [upiModal, setUpiModal] = useState<Customer | null>(null);
   const [amountReceived, setAmountReceived] = useState<string>('');
   const [transactionId, setTransactionId] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CASH' | 'BANK_TRANSFER'>('UPI');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+
+  // Payment Correction / Edit Modal State (For Collection Agents)
+  const [editModal, setEditModal] = useState<Payment | null>(null);
+  const [editAmount, setEditAmount] = useState<string>('');
+  const [editMethod, setEditMethod] = useState<'UPI' | 'CASH' | 'BANK_TRANSFER'>('UPI');
+  const [editTxnId, setEditTxnId] = useState<string>('');
+  const [editReason, setEditReason] = useState<string>('');
+  const [editSubmitting, setEditSubmitting] = useState<boolean>(false);
+  const [editErrorMsg, setEditErrorMsg] = useState<string>('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -79,18 +93,36 @@ export const CollectionAgentView: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  // Filter 1: Pending Customers (Pending balance > 0)
-  const pendingCustomers = customers.filter((c) => (c.pendingAmount || 0) > 0);
+  // Filter 1: Service Type Filtering (All, Cable, Wi-Fi)
+  const filteredCustomers = customers.filter((c) => {
+    if (serviceFilter === 'CABLE') return c.subscriptionType === 'CABLE' || c.subscriptionType === 'BOTH';
+    if (serviceFilter === 'WIFI') return c.subscriptionType === 'WIFI' || c.subscriptionType === 'BOTH';
+    return true;
+  });
 
-  // Filter 2: Payment Collected Customers (Pending balance <= 0 or zero pending)
-  const collectedCustomers = customers.filter((c) => (c.pendingAmount || 0) <= 0);
+  // Track customers who have recorded payment receipts in paymentsHistory
+  const collectedCustomerIds = new Set(paymentsHistory.map((p) => p.customerId));
 
-  // Dashboard Financial Metrics Calculation
-  const yetToCollectAmount = customers.reduce((acc, c) => acc + (c.pendingAmount || 0), 0);
-  const collectedAmount = paymentsHistory.reduce(
-    (acc, p) => acc + (p.status === 'SUCCESSFUL' ? p.amount : 0),
-    0
+  // Pending Customers: Customers with remaining pending amount > 0
+  const pendingCustomers = filteredCustomers.filter((c) => (c.pendingAmount || 0) > 0);
+
+  // Payment Collected Customers: Fully paid OR customers with payments recorded (even if partial pending balance remains)
+  const collectedCustomers = filteredCustomers.filter(
+    (c) => (c.pendingAmount || 0) <= 0 || collectedCustomerIds.has(c.customerId)
   );
+
+  // Financial Breakdown Metrics
+  const yetToCollectAmount = filteredCustomers.reduce((acc, c) => acc + (c.pendingAmount || 0), 0);
+  
+  const validPayments = paymentsHistory.filter((p) => p.status === 'SUCCESSFUL' || p.status === 'CORRECTED');
+  const collectedAmount = validPayments.reduce((acc, p) => acc + p.amount, 0);
+  const upiCollectedAmount = validPayments
+    .filter((p) => p.paymentMethod === 'UPI')
+    .reduce((acc, p) => acc + p.amount, 0);
+  const cashCollectedAmount = validPayments
+    .filter((p) => p.paymentMethod === 'CASH')
+    .reduce((acc, p) => acc + p.amount, 0);
+
   const totalCollectableAmount = yetToCollectAmount + collectedAmount;
 
   // Available Areas Dropdown List
@@ -127,6 +159,7 @@ export const CollectionAgentView: React.FC = () => {
         customerId: upiModal.customerId,
         amount: amt,
         paymentMethod,
+        transactionId: transactionId.trim(),
         billingMonth: new Date().toISOString().slice(0, 7),
         notes: notesStr,
       });
@@ -135,12 +168,58 @@ export const CollectionAgentView: React.FC = () => {
         setUpiModal(null);
         setAmountReceived('');
         setTransactionId('');
-        fetchData(); // Refresh pending balances and payment history
+        fetchData();
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Payment collection recording failed.');
+      setErrorMsg(err.response?.data?.message || err.message || 'Payment collection recording failed.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleOpenEditModal = (p: Payment) => {
+    setEditModal(p);
+    setEditAmount(String(p.amount));
+    setEditMethod(p.paymentMethod);
+    setEditTxnId(p.transactionId || '');
+    setEditReason('');
+    setEditErrorMsg('');
+  };
+
+  const handleCorrectPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModal) return;
+
+    setEditErrorMsg('');
+    const amt = Number(editAmount);
+
+    if (isNaN(amt) || amt <= 0) {
+      setEditErrorMsg('Corrected amount must be a positive number.');
+      return;
+    }
+
+    if (!editReason.trim()) {
+      setEditErrorMsg('Reason for editing/correcting this payment is required.');
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      const res = await api.post(`/payments/${editModal.paymentId}/correct`, {
+        newAmount: amt,
+        paymentMethod: editMethod,
+        transactionId: editTxnId.trim(),
+        reason: editReason.trim(),
+      });
+
+      if (res.data.success) {
+        setEditModal(null);
+        fetchData();
+      }
+    } catch (err: any) {
+      setEditErrorMsg(err.response?.data?.message || err.message || 'Failed to edit payment details.');
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -157,20 +236,56 @@ export const CollectionAgentView: React.FC = () => {
             Assigned Collection Agent: <strong className="text-white">{user?.name}</strong> ({user?.employeeId})
           </p>
         </div>
+
+        {/* Service Type Selection Tabs */}
+        <div className="flex items-center bg-slate-900/90 p-1.5 rounded-xl border border-slate-800">
+          <button
+            onClick={() => setServiceFilter('ALL')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              serviceFilter === 'ALL'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>All Services</span>
+          </button>
+          <button
+            onClick={() => setServiceFilter('CABLE')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              serviceFilter === 'CABLE'
+                ? 'bg-sky-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Tv className="w-3.5 h-3.5" />
+            <span>Cable Collections</span>
+          </button>
+          <button
+            onClick={() => setServiceFilter('WIFI')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              serviceFilter === 'WIFI'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Wifi className="w-3.5 h-3.5" />
+            <span>Wi-Fi Collections</span>
+          </button>
+        </div>
       </div>
 
-      {/* Minimal Collection Dashboard Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Minimal Collection Dashboard Stat Cards with Separate UPI & Cash Totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-4">
         {/* Total Collectable Amount */}
         <div className="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Collectable Amount</p>
-            <h3 className="text-xl font-extrabold text-white mt-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Collectable</p>
+            <h3 className="text-lg font-extrabold text-white mt-1">
               ₹{totalCollectableAmount.toLocaleString('en-IN')}
             </h3>
-            <p className="text-[11px] text-slate-400 mt-1">{customers.length} Assigned Subscribers</p>
+            <p className="text-[10px] text-slate-400 mt-1">{filteredCustomers.length} Subscribers</p>
           </div>
-          <div className="p-3 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+          <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
             <Building2 className="w-5 h-5" />
           </div>
         </div>
@@ -178,28 +293,56 @@ export const CollectionAgentView: React.FC = () => {
         {/* Yet to be Collected Amount */}
         <div className="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Yet to be Collected</p>
-            <h3 className="text-xl font-extrabold text-amber-400 mt-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Yet to Collect</p>
+            <h3 className="text-lg font-extrabold text-amber-400 mt-1">
               ₹{yetToCollectAmount.toLocaleString('en-IN')}
             </h3>
-            <p className="text-[11px] text-slate-400 mt-1">{pendingCustomers.length} Unpaid Subscribers</p>
+            <p className="text-[10px] text-slate-400 mt-1">{pendingCustomers.length} Unpaid / Remaining</p>
           </div>
-          <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
             <Clock className="w-5 h-5" />
           </div>
         </div>
 
-        {/* Collected Amount */}
+        {/* Total Collected Amount */}
         <div className="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Collected Amount</p>
-            <h3 className="text-xl font-extrabold text-emerald-400 mt-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Collected</p>
+            <h3 className="text-lg font-extrabold text-emerald-400 mt-1">
               ₹{collectedAmount.toLocaleString('en-IN')}
             </h3>
-            <p className="text-[11px] text-slate-400 mt-1">{collectedCustomers.length} Paid / Recharged</p>
+            <p className="text-[10px] text-slate-400 mt-1">{validPayments.length} Total Receipts</p>
           </div>
-          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* UPI Collected Total */}
+        <div className="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-sky-400 uppercase tracking-wider">UPI Collected</p>
+            <h3 className="text-lg font-extrabold text-sky-300 mt-1">
+              ₹{upiCollectedAmount.toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[10px] text-slate-400 mt-1">Digital QR Payments</p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            <QrCode className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Cash Received on Hand */}
+        <div className="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Cash on Hand</p>
+            <h3 className="text-lg font-extrabold text-emerald-300 mt-1">
+              ₹{cashCollectedAmount.toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[10px] text-slate-400 mt-1">Physical Cash Received</p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <Banknote className="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -282,12 +425,13 @@ export const CollectionAgentView: React.FC = () => {
               <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto animate-bounce" />
               <h3 className="text-base font-bold text-white">All Collections Completed!</h3>
               <p className="text-xs text-slate-400">
-                No pending balances remaining for customers in this selection.
+                No pending balances remaining for subscribers in this selection.
               </p>
             </div>
           ) : (
             pendingCustomers.map((c) => {
               const isOverdue2Months = (c.monthlyBill || 0) > 0 && (c.pendingAmount || 0) >= (c.monthlyBill * 2);
+              const hasPartialPayment = collectedCustomerIds.has(c.customerId);
 
               return (
                 <div
@@ -300,21 +444,30 @@ export const CollectionAgentView: React.FC = () => {
                         <h3 className="font-bold text-white text-base">{c.name}</h3>
                         <p className="text-xs font-mono text-sky-400">{c.customerId}</p>
                       </div>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                          c.status === 'ACTIVE'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                        }`}
-                      >
-                        {c.status}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            c.subscriptionType === 'WIFI'
+                              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                              : c.subscriptionType === 'CABLE'
+                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                              : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                          }`}
+                        >
+                          {c.subscriptionType}
+                        </span>
+                        {hasPartialPayment && (
+                          <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            PARTIAL PAYMENT DONE
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="text-xs text-slate-300 space-y-1">
                       <p className="flex items-center gap-1.5 text-slate-400">
                         <Phone className="w-3.5 h-3.5 text-slate-500" />
-                        {c.phone}
+                        {c.phone || 'N/A'}
                       </p>
                       <p className="flex items-start gap-1.5 text-slate-400">
                         <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
@@ -327,7 +480,7 @@ export const CollectionAgentView: React.FC = () => {
                   <div className={`p-3 bg-slate-900/90 rounded-xl border flex items-center justify-between ${isOverdue2Months ? 'border-red-500/50 bg-red-500/10' : 'border-slate-800'}`}>
                     <div>
                       <p className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1">
-                        Total Pending
+                        Remaining Pending
                         {isOverdue2Months && <span className="text-[10px] font-extrabold text-red-400 font-mono">(2+ Months)</span>}
                       </p>
                       <p className={`text-lg font-extrabold ${isOverdue2Months ? 'text-red-500 animate-pulse' : 'text-amber-400'}`}>
@@ -335,12 +488,19 @@ export const CollectionAgentView: React.FC = () => {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[11px] text-slate-400 uppercase font-semibold">Current Bill</p>
+                      <p className="text-[11px] text-slate-400 uppercase font-semibold">Monthly Bill</p>
                       <p className="text-xs font-bold text-slate-200">
                         ₹{(c.currentMonthBill || c.monthlyBill).toLocaleString('en-IN')}
                       </p>
                     </div>
                   </div>
+
+                  {/* Advance Credit Badge if customer paid excess */}
+                  {c.advanceAmount && c.advanceAmount > 0 ? (
+                    <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-bold text-emerald-300 text-center">
+                      Advance Credit: ₹{c.advanceAmount.toLocaleString('en-IN')} (Auto-deducts next bill)
+                    </div>
+                  ) : null}
 
                   {/* Action: Collect Payment via UPI */}
                   <button
@@ -360,7 +520,7 @@ export const CollectionAgentView: React.FC = () => {
       {/* TAB 2: PAYMENT COLLECTED CUSTOMERS SECTION */}
       {activeTab === 'collected' && (
         <div className="space-y-6">
-          {/* Section A: Customers with Completed Payments */}
+          {/* Section A: Customers with Completed / Logged Payments */}
           <div className="glass-panel p-6 rounded-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -368,54 +528,72 @@ export const CollectionAgentView: React.FC = () => {
                 Payment Collected Customers ({collectedCustomers.length})
               </h3>
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                Zero Pending Balance
+                Paid / Partial Collections Logged
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {collectedCustomers.length === 0 ? (
                 <div className="col-span-full py-6 text-center text-slate-400 text-xs">
-                  No fully paid subscribers logged yet.
+                  No subscribers logged with collections yet.
                 </div>
               ) : (
-                collectedCustomers.map((c) => (
-                  <div
-                    key={c.customerId}
-                    className="p-4 rounded-xl bg-slate-900/90 border border-emerald-500/30 space-y-2 relative overflow-hidden"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-bold text-white text-sm">{c.name}</h4>
-                        <p className="text-[11px] font-mono text-sky-400">{c.customerId}</p>
+                collectedCustomers.map((c) => {
+                  const hasRemainingPending = (c.pendingAmount || 0) > 0;
+
+                  return (
+                    <div
+                      key={c.customerId}
+                      className="p-4 rounded-xl bg-slate-900/90 border border-emerald-500/30 space-y-2 relative overflow-hidden"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-bold text-white text-sm">{c.name}</h4>
+                          <p className="text-[11px] font-mono text-sky-400">{c.customerId}</p>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-extrabold flex items-center gap-1 ${
+                            hasRemainingPending
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          }`}
+                        >
+                          <Check className="w-3 h-3" />
+                          {hasRemainingPending ? 'PARTIAL PAYMENT' : 'PAID / RECHARGED'}
+                        </span>
                       </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                        <Check className="w-3 h-3" />
-                        PAID / RECHARGED
-                      </span>
-                    </div>
 
-                    <div className="text-xs text-slate-300 space-y-0.5 pt-1">
-                      <p className="text-slate-400 flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-slate-500" />
-                        {c.phone || 'N/A'}
-                      </p>
-                      <p className="text-slate-400 flex items-center gap-1">
-                        <Building2 className="w-3 h-3 text-slate-500" />
-                        {c.area}
-                      </p>
-                    </div>
+                      <div className="text-xs text-slate-300 space-y-0.5 pt-1">
+                        <p className="text-slate-400 flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-slate-500" />
+                          {c.phone || 'N/A'}
+                        </p>
+                        <p className="text-slate-400 flex items-center gap-1">
+                          <Building2 className="w-3 h-3 text-slate-500" />
+                          {c.area} ({c.subscriptionType})
+                        </p>
+                      </div>
 
-                    <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between text-xs mt-2">
-                      <span className="text-slate-300 font-semibold">Pending Balance:</span>
-                      <span className="font-extrabold text-emerald-400">₹0 (Fully Paid)</span>
+                      <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs mt-2">
+                        <span className="text-slate-400 font-semibold">Remaining Pending:</span>
+                        <span className={`font-extrabold ${hasRemainingPending ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {hasRemainingPending ? `₹${c.pendingAmount}` : '₹0 (Fully Paid)'}
+                        </span>
+                      </div>
+
+                      {c.advanceAmount && c.advanceAmount > 0 ? (
+                        <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[10px] font-bold text-emerald-300 text-center">
+                          Advance Credit Balance: ₹{c.advanceAmount}
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
 
-          {/* Section B: Recorded Receipts Log */}
+          {/* Section B: Recorded Receipts Log & Agent Edit Controls */}
           <div className="glass-panel p-6 rounded-2xl space-y-4">
             <h3 className="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
               <Receipt className="w-5 h-5 text-sky-400" />
@@ -430,15 +608,17 @@ export const CollectionAgentView: React.FC = () => {
                     <th className="px-4 py-3">Customer ID</th>
                     <th className="px-4 py-3">Amount Collected</th>
                     <th className="px-4 py-3">Payment Method</th>
+                    <th className="px-4 py-3">Transaction ID</th>
                     <th className="px-4 py-3">Payment Date</th>
                     <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {paymentsHistory.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                        No payment receipts recorded by you yet today.
+                      <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
+                        No payment receipts recorded yet.
                       </td>
                     </tr>
                   ) : (
@@ -450,14 +630,32 @@ export const CollectionAgentView: React.FC = () => {
                           ₹{p.amount.toLocaleString('en-IN')}
                         </td>
                         <td className="px-4 py-3 font-bold text-cyan-300">{p.paymentMethod}</td>
+                        <td className="px-4 py-3 font-mono text-slate-400">
+                          {p.transactionId || 'N/A'}
+                        </td>
                         <td className="px-4 py-3 text-slate-400 flex items-center gap-1">
                           <Calendar className="w-3 h-3 text-slate-500" />
                           {new Date(p.paymentDate).toLocaleString('en-IN')}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              p.status === 'CORRECTED'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            }`}
+                          >
                             {p.status}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleOpenEditModal(p)}
+                            className="px-3 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 font-semibold text-[11px] flex items-center gap-1 ml-auto transition"
+                          >
+                            <Edit className="w-3 h-3" />
+                            <span>Edit / Correct</span>
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -469,14 +667,14 @@ export const CollectionAgentView: React.FC = () => {
         </div>
       )}
 
-      {/* UPI Payment Collection Modal (Section 10) */}
+      {/* Record Payment Modal */}
       {upiModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="glass-card max-w-md w-full p-6 rounded-2xl border border-emerald-500/40 space-y-4 glow-emerald my-8">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <QrCode className="w-5 h-5 text-emerald-400" />
-                Collect Payment - UPI QR
+                Collect Payment - UPI / Cash
               </h3>
               <button onClick={() => setUpiModal(null)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
@@ -487,29 +685,31 @@ export const CollectionAgentView: React.FC = () => {
             <div className="p-3 bg-slate-900 rounded-xl text-xs space-y-1 text-slate-300">
               <p><strong>Customer Name:</strong> {upiModal.name}</p>
               <p><strong>Customer ID:</strong> {upiModal.customerId}</p>
-              <p><strong>Total Pending Balance:</strong> <strong className="text-amber-400">₹{upiModal.pendingAmount || 0}</strong></p>
+              <p><strong>Remaining Pending Balance:</strong> <strong className="text-amber-400">₹{upiModal.pendingAmount || 0}</strong></p>
             </div>
 
             {/* Company QR Display */}
-            <div className="p-4 bg-white rounded-2xl flex flex-col items-center justify-center space-y-2 border border-slate-200 shadow-sm">
-              <img
-                src={`https://quickchart.io/qr?text=${encodeURIComponent(
-                  `upi://pay?pa=${encodeURIComponent(settings.COMPANY_UPI_ID || 'hileapnetwork@upi')}&pn=${encodeURIComponent('HiLeap Network')}&am=${amountReceived || upiModal.pendingAmount || ''}&cu=INR`
-                )}&size=300`}
-                alt="Company UPI QR Code"
-                className="w-48 h-48 object-contain rounded-lg shadow-inner"
-                onError={(e) => {
-                  const fallbackUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-                    `upi://pay?pa=${encodeURIComponent(settings.COMPANY_UPI_ID || 'hileapnetwork@upi')}&pn=${encodeURIComponent('HiLeap Network')}&cu=INR`
-                  )}`;
-                  (e.target as HTMLImageElement).src = fallbackUrl;
-                }}
-              />
-              <p className="text-xs font-bold text-slate-900 font-mono">
-                UPI ID: {settings.COMPANY_UPI_ID || 'hileapnetwork@upi'}
-              </p>
-              <p className="text-[10px] text-slate-500 font-medium">Scan using PhonePe / Google Pay / Paytm</p>
-            </div>
+            {paymentMethod === 'UPI' && (
+              <div className="p-4 bg-white rounded-2xl flex flex-col items-center justify-center space-y-2 border border-slate-200 shadow-sm">
+                <img
+                  src={`https://quickchart.io/qr?text=${encodeURIComponent(
+                    `upi://pay?pa=${encodeURIComponent(settings.COMPANY_UPI_ID || 'hileapnetwork@upi')}&pn=${encodeURIComponent('HiLeap Network')}&am=${amountReceived || upiModal.pendingAmount || ''}&cu=INR`
+                  )}&size=300`}
+                  alt="Company UPI QR Code"
+                  className="w-48 h-48 object-contain rounded-lg shadow-inner"
+                  onError={(e) => {
+                    const fallbackUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+                      `upi://pay?pa=${encodeURIComponent(settings.COMPANY_UPI_ID || 'hileapnetwork@upi')}&pn=${encodeURIComponent('HiLeap Network')}&cu=INR`
+                    )}`;
+                    (e.target as HTMLImageElement).src = fallbackUrl;
+                  }}
+                />
+                <p className="text-xs font-bold text-slate-900 font-mono">
+                  UPI ID: {settings.COMPANY_UPI_ID || 'hileapnetwork@upi'}
+                </p>
+                <p className="text-[10px] text-slate-500 font-medium">Scan using PhonePe / Google Pay / Paytm</p>
+              </div>
+            )}
 
             {errorMsg && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs font-semibold flex items-center gap-2">
@@ -535,7 +735,7 @@ export const CollectionAgentView: React.FC = () => {
               {paymentMethod === 'UPI' && (
                 <div className="p-3 bg-slate-900/90 rounded-xl border border-emerald-500/30 space-y-1">
                   <label className="block text-xs font-bold text-emerald-400">
-                    UPI Transaction ID / UTR Ref No. (Optional)
+                    UPI Transaction ID / UTR Ref No.
                   </label>
                   <input
                     type="text"
@@ -544,9 +744,6 @@ export const CollectionAgentView: React.FC = () => {
                     onChange={(e) => setTransactionId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs font-mono text-white focus:outline-none focus:border-emerald-400"
                   />
-                  <p className="text-[10px] text-slate-400">
-                    Enter the 12-digit UTR or Transaction Ref ID for payment verification.
-                  </p>
                 </div>
               )}
 
@@ -561,6 +758,9 @@ export const CollectionAgentView: React.FC = () => {
                   onChange={(e) => setAmountReceived(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-base font-extrabold text-emerald-400 focus:outline-none focus:border-emerald-500"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  If amount paid exceeds bill, excess is saved as Advance Credit for upcoming bills.
+                </p>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
@@ -577,6 +777,108 @@ export const CollectionAgentView: React.FC = () => {
                   className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-md transition flex items-center gap-2"
                 >
                   {submitting ? 'Recording...' : 'Record Collection'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Correction / Edit Modal for Collection Agents */}
+      {editModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="glass-card max-w-md w-full p-6 rounded-2xl border border-sky-500/40 space-y-4 glow-sky my-8">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Edit className="w-5 h-5 text-sky-400" />
+                Edit Received Payment Details
+              </h3>
+              <button onClick={() => setEditModal(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-900 rounded-xl text-xs space-y-1 text-slate-300 font-mono">
+              <p>Receipt ID: <strong className="text-sky-400">{editModal.paymentId}</strong></p>
+              <p>Customer ID: <strong>{editModal.customerId}</strong></p>
+              <p>Original Amount: <strong>₹{editModal.amount}</strong> ({editModal.paymentMethod})</p>
+            </div>
+
+            {editErrorMsg && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{editErrorMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCorrectPayment} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">New Corrected Amount (₹)</label>
+                <input
+                  type="number"
+                  required
+                  min={0.01}
+                  step="any"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-base font-extrabold text-sky-400 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Method</label>
+                <select
+                  value={editMethod}
+                  onChange={(e) => setEditMethod(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-sky-500"
+                >
+                  <option value="UPI">UPI Scan & Pay</option>
+                  <option value="CASH">Cash Received</option>
+                  <option value="BANK_TRANSFER">Bank Transfer</option>
+                </select>
+              </div>
+
+              {editMethod === 'UPI' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Transaction ID / Ref No.</label>
+                  <input
+                    type="text"
+                    placeholder="Enter UPI reference or UTR ID..."
+                    value={editTxnId}
+                    onChange={(e) => setEditTxnId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Reason for Correction (Mandatory)
+                </label>
+                <textarea
+                  required
+                  rows={2}
+                  placeholder="Explain why this payment entry is being modified (e.g. Typo in amount entered)..."
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditModal(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm shadow-md transition flex items-center gap-2"
+                >
+                  {editSubmitting ? 'Saving Correction...' : 'Save Correction'}
                 </button>
               </div>
             </form>

@@ -18,6 +18,8 @@ export const CollectionsManager: React.FC = () => {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
+  const [serviceFilter, setServiceFilter] = useState<string>('');
+
   // Delete payment history state
   const [delStartDate, setDelStartDate] = useState<string>('');
   const [delEndDate, setDelEndDate] = useState<string>('');
@@ -32,7 +34,7 @@ export const CollectionsManager: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.get('/payments', {
-        params: { status: statusFilter, startDate, endDate },
+        params: { status: statusFilter, startDate, endDate, subscriptionType: serviceFilter },
       });
       if (res.data.success) {
         setPayments(res.data.data);
@@ -42,7 +44,7 @@ export const CollectionsManager: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, startDate, endDate]);
+  }, [statusFilter, startDate, endDate, serviceFilter]);
 
   useEffect(() => {
     fetchPayments();
@@ -78,14 +80,22 @@ export const CollectionsManager: React.FC = () => {
     }
   };
 
-  const handleExportExcel = () => {
-    const queryParams = new URLSearchParams();
-    if (statusFilter) queryParams.append('status', statusFilter);
-    if (startDate) queryParams.append('startDate', startDate);
-    if (endDate) queryParams.append('endDate', endDate);
-
-    // Trigger direct file download
-    window.location.href = `/api/payments/export?${queryParams.toString()}`;
+  const handleExportExcel = async () => {
+    try {
+      const res = await api.get('/payments/export', {
+        params: { status: statusFilter, startDate, endDate, subscriptionType: serviceFilter },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `collection_report_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err: any) {
+      alert('Failed to download collection Excel sheet.');
+    }
   };
 
   const handleSubmitCorrection = async (e: React.FormEvent) => {
@@ -131,7 +141,17 @@ export const CollectionsManager: React.FC = () => {
       </div>
 
       {/* Filter Toolbar */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 glass-panel p-4 rounded-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 glass-panel p-4 rounded-2xl">
+        <select
+          value={serviceFilter}
+          onChange={(e) => setServiceFilter(e.target.value)}
+          className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm font-semibold text-sky-400 focus:outline-none focus:border-sky-500"
+        >
+          <option value="">All Services (Cable & Wi-Fi)</option>
+          <option value="CABLE">Cable Collections</option>
+          <option value="WIFI">Wi-Fi Payment Collections</option>
+        </select>
+
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -223,7 +243,7 @@ export const CollectionsManager: React.FC = () => {
                 <th className="px-5 py-4">Payment ID / Date</th>
                 <th className="px-5 py-4">Customer Name</th>
                 <th className="px-5 py-4">Collection Agent ID</th>
-                <th className="px-5 py-4">Method</th>
+                <th className="px-5 py-4">Method & Txn ID</th>
                 <th className="px-5 py-4">Amount (₹)</th>
                 <th className="px-5 py-4">Status</th>
                 <th className="px-5 py-4 text-right">Audit & Corrections</th>
@@ -264,9 +284,16 @@ export const CollectionsManager: React.FC = () => {
                     </td>
 
                     <td className="px-5 py-4">
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-800 border border-slate-700 text-slate-200">
-                        {p.paymentMethod}
-                      </span>
+                      <div>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-800 border border-slate-700 text-slate-200">
+                          {p.paymentMethod}
+                        </span>
+                        {p.transactionId ? (
+                          <p className="text-[11px] font-mono text-cyan-400 mt-1">
+                            Txn: {p.transactionId}
+                          </p>
+                        ) : null}
+                      </div>
                     </td>
 
                     <td className="px-5 py-4 font-extrabold text-base text-emerald-400">

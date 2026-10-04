@@ -56,6 +56,7 @@ export interface Customer {
   installationDate?: string;
   notes?: string;
   pendingAmount?: number;
+  advanceAmount?: number;
   currentMonthBill?: number;
   totalUnpaidBills?: number;
   totalSuccessfulPayments?: number;
@@ -85,6 +86,7 @@ export interface Payment {
   customerId: string;
   amount: number;
   paymentMethod: 'UPI' | 'CASH' | 'BANK_TRANSFER';
+  transactionId?: string;
   collectionAgentId: string;
   billingMonth: string;
   paymentDate: string;

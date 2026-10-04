@@ -9,12 +9,14 @@ export interface IPendingBalanceSummary {
   totalUnpaidBills: number;
   totalSuccessfulPayments: number;
   pendingAmount: number;
+  advanceAmount: number;
   currentMonthBill: number;
 }
 
 /**
  * Calculates pending amount according to Section 6:
  * Pending Amount = Previous Unpaid Balance + All Previous Unpaid Bills + Current Unpaid Bill - Successful Payments
+ * If Successful Payments exceed Total Bills, the excess is calculated as advanceAmount.
  */
 export const calculateCustomerPendingAmount = async (customerId: string): Promise<IPendingBalanceSummary> => {
   const customer = await Customer.findOne({ customerId });
@@ -29,7 +31,7 @@ export const calculateCustomerPendingAmount = async (customerId: string): Promis
   const totalBillsAmount = bills.reduce((acc, b) => acc + b.amount, 0);
 
   // Fetch all SUCCESSFUL payments for this customer
-  const payments = await Payment.find({ customerId, status: 'SUCCESSFUL' });
+  const payments = await Payment.find({ customerId, status: { $in: ['SUCCESSFUL', 'CORRECTED'] } });
   const totalSuccessfulPayments = payments.reduce((acc, p) => acc + p.amount, 0);
 
   // Get current month bill (if exists)
@@ -38,13 +40,15 @@ export const calculateCustomerPendingAmount = async (customerId: string): Promis
   const currentMonthBill = currentBillObj ? currentBillObj.amount : customer.monthlyBill;
 
   const rawPending = previousUnpaidBalance + totalBillsAmount - totalSuccessfulPayments;
-  const pendingAmount = Math.max(0, rawPending);
+  const pendingAmount = rawPending > 0 ? rawPending : 0;
+  const advanceAmount = rawPending < 0 ? Math.abs(rawPending) : 0;
 
   return {
     previousUnpaidBalance,
     totalUnpaidBills: totalBillsAmount,
     totalSuccessfulPayments,
     pendingAmount,
+    advanceAmount,
     currentMonthBill,
   };
 };
@@ -56,24 +60,15 @@ export const recordPayment = async (data: {
   customerId: string;
   amount: number;
   paymentMethod: 'UPI' | 'CASH' | 'BANK_TRANSFER';
+  transactionId?: string;
   collectionAgentId: string;
   billingMonth: string;
   notes?: string;
 }) => {
-  const { customerId, amount, paymentMethod, collectionAgentId, billingMonth, notes } = data;
+  const { customerId, amount, paymentMethod, transactionId, collectionAgentId, billingMonth, notes } = data;
 
   if (amount <= 0 || isNaN(amount)) {
     throw new Error('Payment amount must be a positive number greater than 0.');
-  }
-
-  const summary = await calculateCustomerPendingAmount(customerId);
-
-  // Check overpayment configuration
-  const allowOverpaymentSetting = await SystemSettings.findOne({ key: 'ALLOW_OVERPAYMENT' });
-  const allowOverpayment = allowOverpaymentSetting ? Boolean(allowOverpaymentSetting.value) : false;
-
-  if (!allowOverpayment && amount > summary.pendingAmount && summary.pendingAmount > 0) {
-    throw new Error(`Payment amount (₹${amount}) exceeds maximum pending balance (₹${summary.pendingAmount}).`);
   }
 
   const paymentId = `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -83,6 +78,7 @@ export const recordPayment = async (data: {
     customerId,
     amount,
     paymentMethod,
+    transactionId: transactionId || '',
     collectionAgentId,
     billingMonth,
     status: 'SUCCESSFUL',
@@ -97,7 +93,7 @@ export const recordPayment = async (data: {
     action: 'RECORD_PAYMENT',
     entity: 'Payment',
     entityId: paymentId,
-    newValue: { customerId, amount, paymentMethod, billingMonth },
+    newValue: { customerId, amount, paymentMethod, transactionId, billingMonth },
   });
 
   return payment;
@@ -111,7 +107,9 @@ export const correctPaymentEntry = async (
   newAmount: number,
   reason: string,
   correctedByEmployeeId: string,
-  correctedByRole: string
+  correctedByRole: string,
+  newPaymentMethod?: 'UPI' | 'CASH' | 'BANK_TRANSFER',
+  newTransactionId?: string
 ) => {
   if (!reason || reason.trim().length === 0) {
     throw new Error('Reason for correction is required.');
@@ -137,6 +135,8 @@ export const correctPaymentEntry = async (
   });
 
   payment.amount = newAmount;
+  if (newPaymentMethod) payment.paymentMethod = newPaymentMethod;
+  if (newTransactionId !== undefined) payment.transactionId = newTransactionId;
   payment.status = 'CORRECTED';
   await payment.save();
 
@@ -147,7 +147,7 @@ export const correctPaymentEntry = async (
     entity: 'Payment',
     entityId: paymentId,
     previousValue: { amount: previousAmount },
-    newValue: { amount: newAmount, reason },
+    newValue: { amount: newAmount, paymentMethod: newPaymentMethod, transactionId: newTransactionId, reason },
   });
 
   return payment;

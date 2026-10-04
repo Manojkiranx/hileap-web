@@ -61,6 +61,7 @@ router.post('/', authenticateToken, requireAnyRole('Admin', 'Collection-Agent'),
       customerId: req.body.customerId,
       amount: Number(req.body.amount),
       paymentMethod: req.body.paymentMethod || 'UPI',
+      transactionId: req.body.transactionId || '',
       collectionAgentId: req.user!.employeeId,
       billingMonth: req.body.billingMonth || new Date().toISOString().slice(0, 7),
       notes: req.body.notes,
@@ -75,14 +76,16 @@ router.post('/', authenticateToken, requireAnyRole('Admin', 'Collection-Agent'),
 // POST /api/payments/:id/correct - Correct entry with mandatory reason & audit trail
 router.post('/:id/correct', authenticateToken, requireAnyRole('Admin', 'Collection-Agent'), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { newAmount, reason } = req.body;
+    const { newAmount, reason, paymentMethod, transactionId } = req.body;
 
     const payment = await correctPaymentEntry(
       req.params.id,
       Number(newAmount),
       reason,
       req.user!.employeeId,
-      req.user!.role
+      req.user!.role,
+      paymentMethod,
+      transactionId
     );
 
     res.json({ success: true, data: payment });
@@ -142,7 +145,7 @@ router.get('/export', authenticateToken, requireAdmin, async (req: AuthRequest, 
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="collection_report_${Date.now()}.xlsx"`);
-    res.send(buffer);
+    res.send(Buffer.from(buffer));
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }

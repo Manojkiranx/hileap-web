@@ -69,6 +69,7 @@ export const generateCollectionExcel = async (filters: IExcelFilterOptions): Pro
     { header: 'Service Type', key: 'subscriptionType', width: 14 },
     { header: 'Amount (₹)', key: 'amount', width: 14 },
     { header: 'Payment Method', key: 'paymentMethod', width: 16 },
+    { header: 'Transaction ID', key: 'transactionId', width: 20 },
     { header: 'Collection Agent', key: 'agentName', width: 20 },
     { header: 'Employee ID', key: 'agentId', width: 15 },
     { header: 'Date', key: 'date', width: 14 },
@@ -109,6 +110,7 @@ export const generateCollectionExcel = async (filters: IExcelFilterOptions): Pro
       subscriptionType: cust ? cust.subscriptionType : 'N/A',
       amount: p.amount,
       paymentMethod: p.paymentMethod,
+      transactionId: p.transactionId || 'N/A',
       agentName: agentMap.get(p.collectionAgentId) || 'Unknown Agent',
       agentId: p.collectionAgentId,
       date: dateStr,
@@ -122,6 +124,6 @@ export const generateCollectionExcel = async (filters: IExcelFilterOptions): Pro
   // Format currency column
   worksheet.getColumn('amount').numFmt = '₹#,##0.00';
 
-  const buffer = await workbook.xlsx.writeBuffer();
-  return buffer as unknown as Buffer;
+  const arrayBuf = await workbook.xlsx.writeBuffer();
+  return Buffer.from(arrayBuf);
 };

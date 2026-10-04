@@ -13,6 +13,7 @@ export interface IPayment extends Document {
   customerId: string;
   amount: number;
   paymentMethod: 'UPI' | 'CASH' | 'BANK_TRANSFER';
+  transactionId?: string;
   collectionAgentId: string;
   billingMonth: string; // "YYYY-MM"
   paymentDate: Date;
@@ -44,6 +45,7 @@ const PaymentSchema: Schema = new Schema(
       enum: ['UPI', 'CASH', 'BANK_TRANSFER'],
       default: 'UPI',
     },
+    transactionId: { type: String, default: '' },
     collectionAgentId: { type: String, required: true, index: true },
     billingMonth: { type: String, required: true },
     paymentDate: { type: Date, default: Date.now, index: true },
